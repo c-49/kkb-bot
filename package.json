@@ -1,0 +1,20 @@
+{
+  "name": "kkb-bot-monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Discord bot with dashboard for settings and image management",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:bot": "workspace bot dev",
+    "dev:dashboard": "workspace dashboard dev",
+    "build": "npm run build -ws",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.3"
+  }
+}

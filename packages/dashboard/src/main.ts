@@ -1,4 +1,5 @@
 import { BotClient } from "./BotClient.js";
+import { WelcomePanel } from "./WelcomePanel.js";
 import { byId, setText, on, addClass, removeClass } from "./utils/dom.js";
 
 const client = new BotClient();
@@ -45,7 +46,9 @@ async function init(): Promise<void> {
         setText(button, "Connecting...");
         await client.connect();
         updateStatus(true);
-
+        // Initialize welcome panel
+        const welcomePanel = new WelcomePanel(client);
+        welcomePanel.init();
         // Set up initial listeners
         client.onEvent((event: any) => {
           logEvent(`Event: ${event.type}`);

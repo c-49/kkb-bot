@@ -17,11 +17,19 @@ export class DashboardServer {
   private wss: WebSocketServer;
   private clients: Map<string, DashboardClient> = new Map();
   private clientIdCounter = 0;
+  private messageHandlers: Map<string, (clientId: string, data: any) => void> = new Map();
 
   constructor(port: number) {
     this.wss = new WebSocketServer({ port });
     this.wss.on("connection", (ws: WebSocket) => this.handleConnection(ws));
     console.log(`📡 Dashboard server listening on ws://localhost:${port}`);
+  }
+
+  /**
+   * Register a handler for a specific message type
+   */
+  onMessage(type: string, handler: (clientId: string, data: any) => void): void {
+    this.messageHandlers.set(type, handler);
   }
 
   private handleConnection(ws: WebSocket): void {
@@ -50,12 +58,28 @@ export class DashboardServer {
   private handleMessage(clientId: string, data: WebSocket.Data): void {
     try {
       const message = JSON.parse(data.toString()) as DashboardMessage;
-      // Implement handlers for different message types
-      // These will be connected to bot logic
       console.log(`📨 Message from ${clientId}:`, message.type);
+      
+      // Call registered handler for this message type
+      const handler = this.messageHandlers.get(message.type);
+      if (handler) {
+        handler(clientId, (message as any).data);
+      } else {
+        console.warn(`No handler registered for message type: ${message.type}`);
+      }
     } catch (err) {
       console.error(`Failed to parse message from ${clientId}:`, err);
     }
+  }
+
+  /**
+   * Send a message to a specific client
+   */
+  sendToClient(clientId: string, message: BotMessage): boolean {
+    const client = this.clients.get(clientId);
+    if (!client) return false;
+    this.sendMessage(client.ws, message);
+    return true;
   }
 
   private handleDisconnect(clientId: string): void {
@@ -81,6 +105,17 @@ export class DashboardServer {
         this.sendMessage(ws, message);
       }
     });
+  }
+
+  /**
+   * Get connected clients count
+   */
+  getClientCount(): number {
+    return this.clients.size;
+  }
+
+  getClients(): Map<string, any> {
+    return this.clients;
   }
 
   close(): Promise<void> {

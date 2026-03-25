@@ -115,15 +115,19 @@ export class BotClient {
     });
   }
 
-  listImages(): void {
-    this.send({ type: "image:list" });
+  fetchWelcomeSettings(): void {
+    this.send({ type: "welcome:fetch" });
   }
 
-  deleteImage(id: string): void {
+  updateWelcomeSettings(partial: any): void {
     this.send({
-      type: "image:delete",
-      data: { id },
+      type: "welcome:update",
+      data: partial,
     });
+  }
+
+  listGifs(): void {
+    this.send({ type: "gif:list" });
   }
 
   ping(): void {

@@ -14,10 +14,16 @@
     "@kkb/shared": "*",
     "discord.js": "^14.14.0",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "lodash-es": "^4.17.21",
+    "multer": "^1.4.4",
+    "pg": "^8.11.3",
+    "sharp": "^0.33.0",
     "ws": "^8.15.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
     "@types/node": "^20.10.6",
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",

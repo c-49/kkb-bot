@@ -112,6 +112,47 @@
       .event-entry:last-child {
         border-bottom: none;
       }
+
+      input[type="text"],
+      input[type="number"],
+      textarea {
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 4px;
+      }
+
+      input[type="text"]:focus,
+      input[type="number"]:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+      }
+
+      input[type="checkbox"] {
+        margin-right: 8px;
+        cursor: pointer;
+      }
+
+      h3 {
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+
+      .gif-entry {
+        padding: 8px;
+        background: #1e293b;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
     </style>
   </head>
   <body>
@@ -129,6 +170,56 @@
       <div class="panel">
         <h2>Event Log</h2>
         <div id="events"></div>
+      </div>
+
+      <div class="panel">
+        <h2>🎉 Welcome Configuration</h2>
+        <div id="welcome-panel">
+          <div style="margin-bottom: 15px;">
+            <label>
+              <input type="checkbox" id="welcome-enabled" /> Enable Welcome Greetings
+            </label>
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label for="welcome-channel">Discord Channel ID:</label>
+            <input
+              type="text"
+              id="welcome-channel"
+              placeholder="e.g., 1234567890"
+              style="width: 100%; padding: 8px; margin-top: 5px;"
+            />
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label for="welcome-message">Greeting Message:</label>
+            <textarea
+              id="welcome-message"
+              placeholder="Use {newUser} as placeholder for the new member mention"
+              style="width: 100%; padding: 8px; margin-top: 5px; min-height: 60px;"
+            ></textarea>
+          </div>
+
+          <div style="margin-bottom: 15px;">
+            <label for="welcome-gif-size">Max GIF Size (MB):</label>
+            <input
+              type="number"
+              id="welcome-gif-size"
+              value="10"
+              min="1"
+              max="50"
+              style="width: 100%; padding: 8px; margin-top: 5px;"
+            />
+          </div>
+
+          <button id="welcome-save-btn">💾 Save Settings</button>
+          <button id="welcome-upload-btn" style="margin-left: 10px;">📤 Upload GIF</button>
+
+          <div style="margin-top: 20px;">
+            <h3>📷 Uploaded GIFs</h3>
+            <div id="welcome-gif-list" style="border: 1px solid #334155; border-radius: 4px; padding: 10px; min-height: 50px; background: #0f172a;"></div>
+          </div>
+        </div>
       </div>
     </div>
 

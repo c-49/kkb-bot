@@ -32,5 +32,5 @@ databases:
     databaseName: kkb_bot
     user: kkb_user
     region: oregon
-    plan: standard
+    plan: basic-256mb
     postgresMajorVersion: "15"

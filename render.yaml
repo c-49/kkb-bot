@@ -8,7 +8,6 @@ services:
     
     # Health check
     healthCheckPath: /health
-    healthCheckInterval: 30
     
     # Port configuration
     envVars:

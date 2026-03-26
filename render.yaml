@@ -2,6 +2,7 @@ services:
   - type: web
     name: kkb-bot
     env: node
+    region: oregon
     plan: starter
     buildCommand: npm install --omit=dev
     startCommand: node --enable-source-maps ./packages/bot/dist/bot/src/bot.js
@@ -30,6 +31,6 @@ databases:
   - name: kkb-bot-db
     databaseName: kkb_bot
     user: kkb_user
-    region: same-as-web
-    plan: starter
+    region: oregon
+    plan: standard
     postgresMajorVersion: "15"

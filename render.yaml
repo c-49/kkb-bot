@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: kkb-bot
+    env: node
+    plan: starter
+    
+    # Build settings
+    buildCommand: npm install && npm run build
+    startCommand: node packages/bot/dist/bot.js
+    
+    # Health check
+    healthCheckPath: /health
+    healthCheckInterval: 30
+    
+    # Port configuration
+    envVars:
+      - key: WS_PORT
+        value: "8080"
+      - key: HTTP_PORT
+        value: "3000"
+      - key: NODE_ENV
+        value: production
+      - key: GIF_STORAGE_PATH
+        value: /var/data/gifs
+    
+    # Persistent disk for GIFs
+    disk:
+      name: gifs-storage
+      mountPath: /var/data/gifs
+      sizeGB: 10
+
+databases:
+  - name: kkb-bot-db
+    databaseName: kkb_bot
+    user: kkb_user
+    region: same-as-web
+    plan: starter
+    postgresMajorVersion: "15"

@@ -18,9 +18,10 @@ export class GifManager {
   private resizeCachePath: string;
   private readonly MAX_GIFS_PER_CATEGORY = 20;
 
-  constructor(giftFolderPath: string = "./gifs") {
-    this.giftFolderPath = giftFolderPath;
-    this.resizeCachePath = path.join(giftFolderPath, "resized");
+  constructor(giftFolderPath?: string) {
+    // Use GIF_STORAGE_PATH env var (for Render disk), fall back to ./gifs
+    this.giftFolderPath = giftFolderPath || process.env.GIF_STORAGE_PATH || "./gifs";
+    this.resizeCachePath = path.join(this.giftFolderPath, "resized");
 
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
@@ -29,6 +30,8 @@ export class GifManager {
           ? { rejectUnauthorized: false }
           : false,
     });
+    
+    console.log(`📁 GIF storage path: ${this.giftFolderPath}`);
   }
 
   /**

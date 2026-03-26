@@ -98,8 +98,8 @@ export class WelcomePanel {
     if (!gifList) return;
 
     const entry = createElement("div", {
-      class: "gif-entry",
-    });
+      "class": "gif-entry",
+    } as Record<string, string>);
     setText(entry, `🎬 ${gif.name} (${(gif.size / 1024).toFixed(2)} KB)`);
 
     gifList.appendChild(entry);

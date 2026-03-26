@@ -64,6 +64,6 @@ export function on<K extends keyof HTMLElementEventMap>(
   event: K,
   handler: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any
 ): () => void {
-  el.addEventListener(event, handler);
-  return () => el.removeEventListener(event, handler);
+  el.addEventListener(event as string, handler as EventListener);
+  return () => el.removeEventListener(event as string, handler as EventListener);
 }

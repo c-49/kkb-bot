@@ -5,14 +5,17 @@
 
 import { Client, ChannelType, AttachmentBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } from "discord.js";
 import { WelcomeManager } from "../storage/WelcomeManager.js";
+import { GifManager } from "../storage/GifManager.js";
 
 export class WelcomeHandler {
   private welcomeManager: WelcomeManager;
+  private gifManager: GifManager;
   private client: Client;
 
-  constructor(client: Client, welcomeManager: WelcomeManager) {
+  constructor(client: Client, welcomeManager: WelcomeManager, gifManager: GifManager) {
     this.client = client;
     this.welcomeManager = welcomeManager;
+    this.gifManager = gifManager;
   }
 
   /**
@@ -37,8 +40,8 @@ export class WelcomeHandler {
       const user = await this.client.users.fetch(userId);
       const greeting = settings.greetingMessage.replace("{newUser}", `<@${userId}>`);
 
-      // Get a random GIF
-      const gifMeta = this.welcomeManager.getRandomGif();
+      // Get a random GIF from "welcome" category
+      const gifPath = await this.gifManager.getRandomGif("welcome");
 
       // Create button for others to send greeting GIFs
       const giftButton = new ButtonBuilder()
@@ -49,9 +52,9 @@ export class WelcomeHandler {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(giftButton);
 
       // Send greeting
-      if (gifMeta) {
+      if (gifPath) {
         // Send with GIF attachment
-        const attachment = new AttachmentBuilder(gifMeta.path);
+        const attachment = new AttachmentBuilder(gifPath);
         await channel.send({
           content: greeting,
           files: [attachment],
@@ -78,15 +81,15 @@ export class WelcomeHandler {
     try {
       await buttonInteraction.deferReply();
 
-      const gifMeta = this.welcomeManager.getRandomGif();
+      const gifPath = await this.gifManager.getRandomGif("welcome");
 
-      if (!gifMeta) {
+      if (!gifPath) {
         return buttonInteraction.editReply({
           content: "No greeting GIFs available right now! 😔",
         });
       }
 
-      const attachment = new AttachmentBuilder(gifMeta.path);
+      const attachment = new AttachmentBuilder(gifPath);
       const newUser = await this.client.users.fetch(userId);
 
       await buttonInteraction.editReply({

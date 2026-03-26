@@ -6,6 +6,7 @@ import { DefaultCommandRegistry } from "./commands/CommandRegistry.js";
 import { SlashCommandRegistry } from "./commands/SlashCommandRegistry.js";
 import { PingCommand, HelloCommand } from "./commands/examples.js";
 import { WelcomeSlashCommand, WelcomeSetupSlashCommand } from "./commands/Welcome.js";
+import { GifCommand } from "./commands/GifCommand.js";
 import { SettingsManager } from "./storage/SettingsManager.js";
 import { WelcomeManager } from "./storage/WelcomeManager.js";
 import { GifManager } from "./storage/GifManager.js";
@@ -59,6 +60,7 @@ function registerCommands(): void {
 function registerSlashCommands(): void {
   slashCommandRegistry.register(new WelcomeSlashCommand());
   slashCommandRegistry.register(new WelcomeSetupSlashCommand());
+  // GifCommand will be registered after gifManager is available
   console.log(`⚡ Registered ${slashCommandRegistry.all().length} slash commands`);
 }
 
@@ -99,19 +101,33 @@ bot.on("ready", async () => {
   console.log("🎉 Welcome system loaded");
 
   // Initialize GIF manager with database
-  gifManager = new GifManager(settingsManager.get().imageUploadPath);
+  gifManager = new GifManager();
   try {
     await gifManager.initDatabase();
     console.log("💾 GIF database initialized");
+    
+    // Ensure "welcome" category exists
+    const welcomeCategory = await gifManager.getCategoryByName("welcome");
+    if (!welcomeCategory) {
+      await gifManager.createCategory(
+        "welcome",
+        "GIFs used for welcoming new members",
+        "system"
+      );
+      console.log("📁 Created 'welcome' GIF category");
+    }
   } catch (error) {
     console.error("Failed to initialize GIF database:", error);
   }
 
   // Initialize welcome handler
-  welcomeHandler = new WelcomeHandler(bot, welcomeManager);
+  welcomeHandler = new WelcomeHandler(bot, welcomeManager, gifManager);
 
   // Register slash commands
   registerSlashCommands();
+  
+  // Register GifCommand (needs gifManager)
+  slashCommandRegistry.register(new GifCommand(gifManager));
 
   // Deploy slash commands to Discord
   await deploySlashCommands();
@@ -235,7 +251,6 @@ function setupDashboardHandlers(): void {
   // Welcome settings update
   dashboardServer.onMessage("welcome:update", async (_clientId: string, data: any) => {
     await welcomeManager.update(data);
-    welcomeHandler.reloadSettings();
     dashboardServer.broadcastEvent({
       type: "welcome:updated",
       data: welcomeManager.get(),

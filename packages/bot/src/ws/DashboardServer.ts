@@ -50,18 +50,19 @@ export class DashboardServer {
 
     console.log(`✅ Dashboard connected: ${clientId}`);
 
-    ws.on("message", (data: WebSocket.Data) => this.handleMessage(clientId, data));
+    ws.on("message", (data: string | Buffer) => this.handleMessage(clientId, data));
     ws.on("close", () => this.handleDisconnect(clientId));
     ws.on("error", (err: Error) => console.error(`WS Error [${clientId}]:`, err));
   }
 
-  private handleMessage(clientId: string, data: WebSocket.Data): void {
+  private handleMessage(clientId: string, data: string | Buffer): void {
     try {
-      const message = JSON.parse(data.toString()) as DashboardMessage;
+      const messageStr = typeof data === 'string' ? data : data.toString();
+      const message = JSON.parse(messageStr) as DashboardMessage;
       console.log(`📨 Message from ${clientId}:`, message.type);
       
       // Call registered handler for this message type
-      const handler = this.messageHandlers.get(message.type);
+      const handler = this.messageHandlers.get(message.type as string);
       if (handler) {
         handler(clientId, (message as any).data);
       } else {

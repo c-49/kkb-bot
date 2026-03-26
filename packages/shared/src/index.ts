@@ -119,6 +119,17 @@ export interface ImageMeta {
 }
 
 /**
+ * GIF Category Management
+ */
+
+export interface GifCategory {
+  id: string;
+  name: string;
+  description?: string;
+  gifCount: number;
+}
+
+/**
  * WebSocket Messages
  * Communication protocol between bot and dashboard
  */

@@ -39,9 +39,9 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
 
   /**
    * POST /upload/gif
-   * Upload a new GIF for welcome greetings
+   * Upload a new GIF to a category (defaults to 'welcome')
    * 
-   * Expects: multipart/form-data with 'file' field
+   * Expects: multipart/form-data with 'file' field and optional 'category' field
    * Returns: ImageMeta object
    */
   router.post("/gif", upload.single("file"), async (req: Request, res: Response) => {
@@ -51,6 +51,7 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
       }
 
       const { originalname, buffer, size } = req.file;
+      const category = (req.body?.category as string) || "welcome";
 
       // Validate size
       if (size > maxFileSize) {
@@ -59,8 +60,14 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
         });
       }
 
-      // Upload GIF
-      const gifMeta = await gifManager.uploadGif(buffer, originalname, maxFileSize);
+      // Upload GIF to category
+      const gifMeta = await gifManager.uploadGif(
+        category,
+        buffer,
+        originalname,
+        undefined,
+        maxFileSize
+      );
 
       return res.status(201).json(gifMeta);
     } catch (error) {
@@ -73,13 +80,15 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
 
   /**
    * GET /upload/gifs
-   * List all uploaded GIFs
+   * List all uploaded GIFs or GIFs from a specific category
    * 
+   * Query params: category?
    * Returns: Array of ImageMeta objects
    */
-  router.get("/gifs", async (_req: Request, res: Response) => {
+  router.get("/gifs", async (req: Request, res: Response) => {
     try {
-      const gifs = await gifManager.listGifs();
+      const category = req.query.category as string | undefined;
+      const gifs = await gifManager.listGifs(category);
       return res.json(gifs);
     } catch (error) {
       console.error("List GIFs error:", error);
@@ -110,20 +119,21 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
 
   /**
    * GET /upload/gif/random
-   * Get a random GIF (with optional resizing)
+   * Get a random GIF from a category (defaults to 'welcome')
    * 
-   * Query params: width?, height?
+   * Query params: category?, width?, height?
    * Returns: file path to random GIF
    */
   router.get("/gif/random", async (req: Request, res: Response) => {
     try {
+      const category = (req.query.category as string) || "welcome";
       const width = req.query.width ? parseInt(req.query.width as string) : undefined;
       const height = req.query.height ? parseInt(req.query.height as string) : undefined;
 
-      const gifPath = await gifManager.getRandomGif(width, height);
+      const gifPath = await gifManager.getRandomGif(category, width, height);
 
       if (!gifPath) {
-        return res.status(404).json({ error: "No GIFs found" });
+        return res.status(404).json({ error: `No GIFs found in category: ${category}` });
       }
 
       return res.sendFile(gifPath);

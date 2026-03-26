@@ -16,8 +16,9 @@ export class GifManager {
   private pool: Pool;
   private giftFolderPath: string;
   private resizeCachePath: string;
+  private readonly MAX_GIFS_PER_CATEGORY = 20;
 
-  constructor(giftFolderPath: string = "./gifs/welcome") {
+  constructor(giftFolderPath: string = "./gifs") {
     this.giftFolderPath = giftFolderPath;
     this.resizeCachePath = path.join(giftFolderPath, "resized");
 
@@ -36,17 +37,29 @@ export class GifManager {
   async initDatabase(): Promise<void> {
     try {
       await this.pool.query(`
-        CREATE TABLE IF NOT EXISTS gifs (
+        CREATE TABLE IF NOT EXISTS gif_categories (
           id UUID PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          file_path TEXT NOT NULL,
-          size INTEGER NOT NULL,
-          uploaded_at BIGINT NOT NULL,
+          name VARCHAR(100) UNIQUE NOT NULL,
           description TEXT,
+          created_by VARCHAR(255),
           created_at TIMESTAMP DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS gifs (
+          id UUID PRIMARY KEY,
+          category_id UUID NOT NULL REFERENCES gif_categories(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          file_path TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          uploader_id VARCHAR(255),
+          description TEXT,
+          uploaded_at BIGINT NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gifs_category_id ON gifs(category_id);
         CREATE INDEX IF NOT EXISTS idx_gifs_uploaded_at ON gifs(uploaded_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_categories_name ON gif_categories(name);
       `);
       console.log("✅ GIF database schema initialized");
     } catch (error) {
@@ -56,7 +69,7 @@ export class GifManager {
   }
 
   /**
-   * Ensure directory exists
+   * Ensure a directory exists
    */
   private async ensureDirectory(dirPath: string): Promise<void> {
     try {
@@ -68,11 +81,106 @@ export class GifManager {
   }
 
   /**
-   * Upload and store a GIF
+   * Create a new GIF category
+   */
+  async createCategory(
+    name: string,
+    description?: string,
+    createdBy?: string
+  ): Promise<{ id: string; name: string; description?: string }> {
+    try {
+      const id = randomUUID();
+      const result = await this.pool.query(
+        `INSERT INTO gif_categories (id, name, description, created_by)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, description`,
+        [id, name.toLowerCase(), description || null, createdBy || null]
+      );
+
+      const row = result.rows[0];
+      console.log(`✅ Created GIF category: ${name}`);
+
+      // Create folder for category
+      await this.ensureDirectory(path.join(this.giftFolderPath, row.name));
+
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+      };
+    } catch (error) {
+      if ((error as any).code === "23505") {
+        // Unique constraint violation
+        throw new Error(`Category "${name}" already exists`);
+      }
+      console.error("Failed to create category:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get category by name
+   */
+  async getCategoryByName(name: string): Promise<{ id: string; name: string; description?: string } | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT id, name, description FROM gif_categories WHERE name = $1`,
+        [name.toLowerCase()]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+      };
+    } catch (error) {
+      console.error("Failed to get category:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all categories
+   */
+  async listCategories(): Promise<Array<{ id: string; name: string; description?: string; gifCount: number }>> {
+    try {
+      const result = await this.pool.query(`
+        SELECT 
+          c.id, 
+          c.name, 
+          c.description,
+          COUNT(g.id) as gif_count
+        FROM gif_categories c
+        LEFT JOIN gifs g ON c.id = g.category_id
+        GROUP BY c.id, c.name, c.description
+        ORDER BY c.name ASC
+      `);
+
+      return result.rows.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        gifCount: parseInt(row.gif_count, 10),
+      }));
+    } catch (error) {
+      console.error("Failed to list categories:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload and store a GIF to a category
    */
   async uploadGif(
+    category: string,
     fileBuffer: Buffer,
     fileName: string,
+    uploaderId?: string,
     maxSizeBytes: number = 10 * 1024 * 1024
   ): Promise<ImageMeta> {
     // Validate size
@@ -93,27 +201,48 @@ export class GifManager {
     }
 
     try {
-      await this.ensureDirectory(this.giftFolderPath);
+      // Get or create category
+      let categoryData = await this.getCategoryByName(category);
+      if (!categoryData) {
+        categoryData = await this.createCategory(category, undefined, uploaderId);
+      }
+
+      // Check GIF count for this category
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*) as count FROM gifs WHERE category_id = $1`,
+        [categoryData.id]
+      );
+      const gifCount = parseInt(countResult.rows[0].count, 10);
+
+      if (gifCount >= this.MAX_GIFS_PER_CATEGORY) {
+        throw new Error(
+          `Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`
+        );
+      }
+
+      // Ensure category folder exists
+      const categoryFolder = path.join(this.giftFolderPath, categoryData.name);
+      await this.ensureDirectory(categoryFolder);
 
       // Generate unique filename
       const id = randomUUID();
       const ext = path.extname(fileName);
       const storedFileName = `${id}${ext}`;
-      const filePath = path.join(this.giftFolderPath, storedFileName);
+      const filePath = path.join(categoryFolder, storedFileName);
 
       // Write file
       await fs.writeFile(filePath, fileBuffer);
 
       // Store in database
       const result = await this.pool.query(
-        `INSERT INTO gifs (id, name, file_path, size, uploaded_at, description)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, description)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id, name, file_path, size, uploaded_at`,
-        [id, fileName, filePath, fileBuffer.length, Date.now(), "User uploaded GIF"]
+        [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), "User uploaded GIF"]
       );
 
       const row = result.rows[0];
-      console.log(`✅ GIF uploaded: ${fileName} (${row.id})`);
+      console.log(`✅ GIF uploaded to "${category}": ${fileName} (${row.id})`);
 
       return {
         id: row.id,
@@ -129,15 +258,23 @@ export class GifManager {
   }
 
   /**
-   * Get all uploaded GIFs
+   * List GIFs in a category
    */
-  async listGifs(): Promise<ImageMeta[]> {
+  async listGifs(category?: string): Promise<ImageMeta[]> {
     try {
-      const result = await this.pool.query(
-        `SELECT id, name, file_path, size, uploaded_at 
-         FROM gifs 
-         ORDER BY uploaded_at DESC`
-      );
+      let query = `SELECT id, name, file_path, size, uploaded_at FROM gifs`;
+      const params: any[] = [];
+
+      if (category) {
+        query += ` WHERE category_id IN (
+          SELECT id FROM gif_categories WHERE name = $1
+        )`;
+        params.push(category.toLowerCase());
+      }
+
+      query += ` ORDER BY uploaded_at DESC`;
+
+      const result = await this.pool.query(query, params);
 
       return result.rows.map((row: any) => ({
         id: row.id,
@@ -153,13 +290,23 @@ export class GifManager {
   }
 
   /**
-   * Get random GIF, optionally resized
+   * Get random GIF from a category, optionally resized
    */
-  async getRandomGif(width?: number, height?: number): Promise<string | null> {
+  async getRandomGif(category?: string, width?: number, height?: number): Promise<string | null> {
     try {
-      const result = await this.pool.query(
-        `SELECT id, file_path FROM gifs ORDER BY RANDOM() LIMIT 1`
-      );
+      let query = `SELECT id, file_path FROM gifs`;
+      const params: any[] = [];
+
+      if (category) {
+        query += ` WHERE category_id IN (
+          SELECT id FROM gif_categories WHERE name = $1
+        )`;
+        params.push(category.toLowerCase());
+      }
+
+      query += ` ORDER BY RANDOM() LIMIT 1`;
+
+      const result = await this.pool.query(query, params);
 
       if (result.rows.length === 0) {
         return null;

@@ -3,9 +3,7 @@ services:
     name: kkb-bot
     env: node
     plan: starter
-    
-    # Build settings
-    buildCommand: npm install && npm run build -ws
+    buildCommand: npm install --omit=dev && npm run build -ws
     startCommand: node --enable-source-maps ./packages/bot/dist/bot/src/bot.js
     
     # Health check

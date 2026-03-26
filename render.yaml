@@ -6,7 +6,7 @@ services:
     
     # Build settings
     buildCommand: npm install && npm run build -ws
-    startCommand: node ./packages/bot/dist/bot.js
+    startCommand: cd packages/bot && node dist/bot.js
     
     # Health check
     healthCheckPath: /health

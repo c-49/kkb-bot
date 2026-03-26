@@ -5,8 +5,8 @@ services:
     plan: starter
     
     # Build settings
-    buildCommand: npm install && npm run build
-    startCommand: node packages/bot/dist/bot.js
+    buildCommand: npm install && npm run build -ws
+    startCommand: node ./packages/bot/dist/bot.js
     
     # Health check
     healthCheckPath: /health

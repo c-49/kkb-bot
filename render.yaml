@@ -6,7 +6,7 @@ services:
     
     # Build settings
     buildCommand: npm install && npm run build -ws
-    startCommand: npm start
+    startCommand: node --enable-source-maps ./packages/bot/dist/bot/src/bot.js
     
     # Health check
     healthCheckPath: /health

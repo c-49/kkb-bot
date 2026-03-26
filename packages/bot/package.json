@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --loader tsx/esm src/bot.ts",
     "build": "tsc",
-    "start": "node dist/bot.js",
+    "start": "node dist/bot/src/bot.js",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

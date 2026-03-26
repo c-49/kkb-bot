@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KKB Dashboard</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      header {
+        margin-bottom: 30px;
+      }
+
+      h1 {
+        font-size: 28px;
+        margin-bottom: 10px;
+      }
+
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 15px;
+        background: #1e293b;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      #status {
+        font-weight: 500;
+        padding: 5px 10px;
+        border-radius: 4px;
+        background: #1e293b;
+      }
+
+      #status.success {
+        color: #10b981;
+      }
+
+      #status.error {
+        color: #ef4444;
+      }
+
+      button {
+        padding: 8px 16px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background 0.2s;
+      }
+
+      button:hover:not(:disabled) {
+        background: #2563eb;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .panel {
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .panel h2 {
+        font-size: 18px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #334155;
+        padding-bottom: 10px;
+      }
+
+      #events {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+      }
+
+      .event-entry {
+        padding: 5px 0;
+        border-bottom: 1px solid #334155;
+        color: #cbd5e1;
+      }
+
+      .event-entry:last-child {
+        border-bottom: none;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      textarea {
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 4px;
+      }
+
+      input[type="text"]:focus,
+      input[type="number"]:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+      }
+
+      input[type="checkbox"] {
+        margin-right: 8px;
+        cursor: pointer;
+      }
+
+      h3 {
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+
+      .gif-entry {
+        padding: 8px;
+        background: #1e293b;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-D9h_Esgu.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🤖 KKB Bot Dashboard</h1>
+        <p>Control and monitor your Discord bot</p>
+      </header>
+
+      <div class="status-bar">
+        <div id="status">Disconnected ❌</div>
+        <button id="connect-btn">Connect</button>
+      </div>
+
+      <div class="panel">
+        <h2>Event Log</h2>
+        <div id="events"></div>
+      </div>
+
+      <div class="panel">
+        <h2>🎉 Welcome Configuration</h2>
+        <div id="welcome-panel">
+          <div style="margin-bottom: 15px;">
+            <label>
+              <input type="checkbox" id="welcome-enabled" /> Enable Welcome Greetings
+            </label>
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label for="welcome-channel">Discord Channel ID:</label>
+            <input
+              type="text"
+              id="welcome-channel"
+              placeholder="e.g., 1234567890"
+              style="width: 100%; padding: 8px; margin-top: 5px;"
+            />
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label for="welcome-message">Greeting Message:</label>
+            <textarea
+              id="welcome-message"
+              placeholder="Use {newUser} as placeholder for the new member mention"
+              style="width: 100%; padding: 8px; margin-top: 5px; min-height: 60px;"
+            ></textarea>
+          </div>
+
+          <div style="margin-bottom: 15px;">
+            <label for="welcome-gif-size">Max GIF Size (MB):</label>
+            <input
+              type="number"
+              id="welcome-gif-size"
+              value="10"
+              min="1"
+              max="50"
+              style="width: 100%; padding: 8px; margin-top: 5px;"
+            />
+          </div>
+
+          <button id="welcome-save-btn">💾 Save Settings</button>
+          <button id="welcome-upload-btn" style="margin-left: 10px;">📤 Upload GIF</button>
+
+          <div style="margin-top: 20px;">
+            <h3>📷 Uploaded GIFs</h3>
+            <div id="welcome-gif-list" style="border: 1px solid #334155; border-radius: 4px; padding: 10px; min-height: 50px; background: #0f172a;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </body>
+</html>

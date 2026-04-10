@@ -4,7 +4,7 @@
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": ["ES2020"],
-    "module": "esnext",
+    "module": "commonjs",
     "moduleResolution": "node",
     "skipLibCheck": true,
     "esModuleInterop": true,

@@ -2,7 +2,6 @@
   "name": "@kkb/bot",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "dev": "node --loader tsx/esm src/bot.ts",

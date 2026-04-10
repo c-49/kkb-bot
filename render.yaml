@@ -4,8 +4,8 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm install --omit=dev
-    startCommand: node --enable-source-maps ./packages/bot/dist/bot/src/bot.js
+    buildCommand: npm install --omit=dev && npm run build
+    startCommand: node --enable-source-maps index.js
     
     # Health check
     healthCheckPath: /health

@@ -10,7 +10,7 @@
     "dev:bot": "workspace bot dev",
     "dev:dashboard": "workspace dashboard dev",
     "build": "npm run build -ws",
-    "start": "node --enable-source-maps packages/bot/dist/bot/src/bot.js",
+    "start": "node --enable-source-maps index.js",
     "lint": "eslint .",
     "type-check": "tsc --noEmit"
   },

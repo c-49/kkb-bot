@@ -1,15 +1,18 @@
-import { SlashCommandBuilder, } from "discord.js";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WelcomeSlashCommand = exports.WelcomeSetupSlashCommand = void 0;
+const discord_js_1 = require("discord.js");
 /**
  * /welcome-setup Slash Command
  * Admin command to configure welcome greeting settings
  */
-export class WelcomeSetupSlashCommand {
+class WelcomeSetupSlashCommand {
     constructor() {
         Object.defineProperty(this, "data", {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: new SlashCommandBuilder()
+            value: new discord_js_1.SlashCommandBuilder()
                 .setName("welcome-setup")
                 .setDescription("Configure welcome greeting settings (Admin only)")
                 .addStringOption((option) => option
@@ -95,17 +98,18 @@ export class WelcomeSetupSlashCommand {
         });
     }
 }
+exports.WelcomeSetupSlashCommand = WelcomeSetupSlashCommand;
 /**
  * /welcome Slash Command
  * User command to trigger test greeting or check status
  */
-export class WelcomeSlashCommand {
+class WelcomeSlashCommand {
     constructor() {
         Object.defineProperty(this, "data", {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: new SlashCommandBuilder()
+            value: new discord_js_1.SlashCommandBuilder()
                 .setName("welcome")
                 .setDescription("Send a test welcome greeting or check status")
                 .addSubcommand((sub) => sub
@@ -137,3 +141,4 @@ export class WelcomeSlashCommand {
         });
     }
 }
+exports.WelcomeSlashCommand = WelcomeSlashCommand;

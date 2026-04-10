@@ -1,6 +1,9 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DashboardServer = void 0;
 // @ts-ignore - ws types are properly installed but TypeScript has trouble with them
-import { WebSocket, WebSocketServer } from "ws";
-export class DashboardServer {
+const ws_1 = require("ws");
+class DashboardServer {
     constructor(port) {
         Object.defineProperty(this, "wss", {
             enumerable: true,
@@ -26,7 +29,7 @@ export class DashboardServer {
             writable: true,
             value: new Map()
         });
-        this.wss = new WebSocketServer({ port });
+        this.wss = new ws_1.WebSocketServer({ port });
         this.wss.on("connection", (ws) => this.handleConnection(ws));
         console.log(`📡 Dashboard server listening on ws://localhost:${port}`);
     }
@@ -98,7 +101,7 @@ export class DashboardServer {
             data: event,
         };
         this.clients.forEach(({ ws }) => {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === ws_1.WebSocket.OPEN) {
                 this.sendMessage(ws, message);
             }
         });
@@ -118,3 +121,4 @@ export class DashboardServer {
         });
     }
 }
+exports.DashboardServer = DashboardServer;

@@ -1,15 +1,21 @@
-import fs from "fs/promises";
-import path from "path";
-import { randomUUID } from "crypto";
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GifManager = void 0;
+const promises_1 = __importDefault(require("fs/promises"));
+const path_1 = __importDefault(require("path"));
+const crypto_1 = require("crypto");
 // @ts-ignore - sharp types not yet installed
-import sharp from "sharp";
+const sharp_1 = __importDefault(require("sharp"));
 // @ts-ignore - pg types not yet installed
-import { Pool } from "pg";
+const pg_1 = require("pg");
 /**
  * GIF Manager
  * Handles GIF storage, resizing, and database persistence
  */
-export class GifManager {
+class GifManager {
     constructor(giftFolderPath) {
         Object.defineProperty(this, "pool", {
             enumerable: true,
@@ -37,8 +43,8 @@ export class GifManager {
         });
         // Use GIF_STORAGE_PATH env var (for Render disk), fall back to ./gifs
         this.giftFolderPath = giftFolderPath || process.env.GIF_STORAGE_PATH || "./gifs";
-        this.resizeCachePath = path.join(this.giftFolderPath, "resized");
-        this.pool = new Pool({
+        this.resizeCachePath = path_1.default.join(this.giftFolderPath, "resized");
+        this.pool = new pg_1.Pool({
             connectionString: process.env.DATABASE_URL,
             ssl: process.env.NODE_ENV === "production"
                 ? { rejectUnauthorized: false }
@@ -88,7 +94,7 @@ export class GifManager {
      */
     async ensureDirectory(dirPath) {
         try {
-            await fs.mkdir(dirPath, { recursive: true });
+            await promises_1.default.mkdir(dirPath, { recursive: true });
         }
         catch (error) {
             console.error(`Failed to create directory ${dirPath}:`, error);
@@ -100,14 +106,14 @@ export class GifManager {
      */
     async createCategory(name, description, createdBy) {
         try {
-            const id = randomUUID();
+            const id = (0, crypto_1.randomUUID)();
             const result = await this.pool.query(`INSERT INTO gif_categories (id, name, description, created_by)
          VALUES ($1, $2, $3, $4)
          RETURNING id, name, description`, [id, name.toLowerCase(), description || null, createdBy || null]);
             const row = result.rows[0];
             console.log(`✅ Created GIF category: ${name}`);
             // Create folder for category
-            await this.ensureDirectory(path.join(this.giftFolderPath, row.name));
+            await this.ensureDirectory(path_1.default.join(this.giftFolderPath, row.name));
             return {
                 id: row.id,
                 name: row.name,
@@ -200,15 +206,15 @@ export class GifManager {
                 throw new Error(`Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`);
             }
             // Ensure category folder exists
-            const categoryFolder = path.join(this.giftFolderPath, categoryData.name);
+            const categoryFolder = path_1.default.join(this.giftFolderPath, categoryData.name);
             await this.ensureDirectory(categoryFolder);
             // Generate unique filename
-            const id = randomUUID();
-            const ext = path.extname(fileName);
+            const id = (0, crypto_1.randomUUID)();
+            const ext = path_1.default.extname(fileName);
             const storedFileName = `${id}${ext}`;
-            const filePath = path.join(categoryFolder, storedFileName);
+            const filePath = path_1.default.join(categoryFolder, storedFileName);
             // Write file
-            await fs.writeFile(filePath, fileBuffer);
+            await promises_1.default.writeFile(filePath, fileBuffer);
             // Store in database
             const result = await this.pool.query(`INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, description)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -290,11 +296,11 @@ export class GifManager {
      * Get resized GIF, creating cache if needed
      */
     async getResizedGif(id, originalPath, width, height) {
-        const cacheDir = path.join(this.resizeCachePath, `${width}x${height}`);
-        const cachedPath = path.join(cacheDir, `${id}.gif`);
+        const cacheDir = path_1.default.join(this.resizeCachePath, `${width}x${height}`);
+        const cachedPath = path_1.default.join(cacheDir, `${id}.gif`);
         // Return cached version if it exists
         try {
-            await fs.access(cachedPath);
+            await promises_1.default.access(cachedPath);
             return cachedPath;
         }
         catch {
@@ -303,7 +309,7 @@ export class GifManager {
         try {
             await this.ensureDirectory(cacheDir);
             // Resize GIF (sharp handles animated GIFs)
-            await sharp(originalPath, { animated: true })
+            await (0, sharp_1.default)(originalPath, { animated: true })
                 .resize(width, height, { fit: "inside" })
                 .toFile(cachedPath);
             console.log(`✅ Resized GIF created: ${cachedPath}`);
@@ -327,7 +333,7 @@ export class GifManager {
             const { file_path } = result.rows[0];
             // Delete file
             try {
-                await fs.unlink(file_path);
+                await promises_1.default.unlink(file_path);
                 console.log(`✅ GIF file deleted: ${file_path}`);
             }
             catch (error) {
@@ -352,14 +358,14 @@ export class GifManager {
     async cleanupResizedVersions(id) {
         try {
             const resizedRoot = this.resizeCachePath;
-            const entries = await fs.readdir(resizedRoot);
+            const entries = await promises_1.default.readdir(resizedRoot);
             for (const sizeDir of entries) {
-                const sizeRootPath = path.join(resizedRoot, sizeDir);
-                const stat = await fs.stat(sizeRootPath);
+                const sizeRootPath = path_1.default.join(resizedRoot, sizeDir);
+                const stat = await promises_1.default.stat(sizeRootPath);
                 if (stat.isDirectory()) {
-                    const cachedFile = path.join(sizeRootPath, `${id}.gif`);
+                    const cachedFile = path_1.default.join(sizeRootPath, `${id}.gif`);
                     try {
-                        await fs.unlink(cachedFile);
+                        await promises_1.default.unlink(cachedFile);
                         console.log(`✅ Cleaned up resized version: ${cachedFile}`);
                     }
                     catch {
@@ -379,3 +385,4 @@ export class GifManager {
         await this.pool.end();
     }
 }
+exports.GifManager = GifManager;

@@ -1,8 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SlashCommandRegistry = void 0;
 /**
  * Slash command registry
  * Manages all registered slash commands
  */
-export class SlashCommandRegistry {
+class SlashCommandRegistry {
     constructor() {
         Object.defineProperty(this, "commands", {
             enumerable: true,
@@ -34,3 +37,4 @@ export class SlashCommandRegistry {
         return this.all().map((cmd) => cmd.data.toJSON());
     }
 }
+exports.SlashCommandRegistry = SlashCommandRegistry;

@@ -1,18 +1,23 @@
-import "dotenv/config";
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 // @ts-ignore - express types not yet installed
-import express from "express";
-import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
-import { DefaultCommandRegistry } from "./commands/CommandRegistry.js";
-import { SlashCommandRegistry } from "./commands/SlashCommandRegistry.js";
-import { PingCommand, HelloCommand } from "./commands/examples.js";
-import { WelcomeSlashCommand, WelcomeSetupSlashCommand } from "./commands/Welcome.js";
-import { GifCommand } from "./commands/GifCommand.js";
-import { SettingsManager } from "./storage/SettingsManager.js";
-import { WelcomeManager } from "./storage/WelcomeManager.js";
-import { GifManager } from "./storage/GifManager.js";
-import { DashboardServer } from "./ws/DashboardServer.js";
-import { WelcomeHandler } from "./ws/WelcomeHandler.js";
-import { createUploadRoutes } from "./routes/uploadRoutes.js";
+const express_1 = __importDefault(require("express"));
+const discord_js_1 = require("discord.js");
+const CommandRegistry_js_1 = require("./commands/CommandRegistry.js");
+const SlashCommandRegistry_js_1 = require("./commands/SlashCommandRegistry.js");
+const examples_js_1 = require("./commands/examples.js");
+const Welcome_js_1 = require("./commands/Welcome.js");
+const GifCommand_js_1 = require("./commands/GifCommand.js");
+const SettingsManager_js_1 = require("./storage/SettingsManager.js");
+const WelcomeManager_js_1 = require("./storage/WelcomeManager.js");
+const GifManager_js_1 = require("./storage/GifManager.js");
+const DashboardServer_js_1 = require("./ws/DashboardServer.js");
+const WelcomeHandler_js_1 = require("./ws/WelcomeHandler.js");
+const uploadRoutes_js_1 = require("./routes/uploadRoutes.js");
 /**
  * Main bot entry point
  * Initializes Discord.js client, command registry, dashboard server, and welcome system
@@ -27,13 +32,13 @@ if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL environment variable is required for GIF storage");
 }
 // Initialize systems
-const commandRegistry = new DefaultCommandRegistry();
-const slashCommandRegistry = new SlashCommandRegistry();
-const bot = new Client({
+const commandRegistry = new CommandRegistry_js_1.DefaultCommandRegistry();
+const slashCommandRegistry = new SlashCommandRegistry_js_1.SlashCommandRegistry();
+const bot = new discord_js_1.Client({
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers, // for member join events
+        discord_js_1.GatewayIntentBits.Guilds,
+        discord_js_1.GatewayIntentBits.GuildMessages,
+        discord_js_1.GatewayIntentBits.GuildMembers, // for member join events
     ],
 });
 let settingsManager;
@@ -44,14 +49,14 @@ let gifManager;
 let httpServer;
 // Register default commands
 function registerCommands() {
-    commandRegistry.register(new PingCommand());
-    commandRegistry.register(new HelloCommand());
+    commandRegistry.register(new examples_js_1.PingCommand());
+    commandRegistry.register(new examples_js_1.HelloCommand());
     console.log(`📚 Registered ${commandRegistry.all().length} text commands`);
 }
 // Register slash commands
 function registerSlashCommands() {
-    slashCommandRegistry.register(new WelcomeSlashCommand());
-    slashCommandRegistry.register(new WelcomeSetupSlashCommand());
+    slashCommandRegistry.register(new Welcome_js_1.WelcomeSlashCommand());
+    slashCommandRegistry.register(new Welcome_js_1.WelcomeSetupSlashCommand());
     // GifCommand will be registered after gifManager is available
     console.log(`⚡ Registered ${slashCommandRegistry.all().length} slash commands`);
 }
@@ -67,10 +72,10 @@ async function deploySlashCommands() {
         return;
     }
     try {
-        const rest = new REST({ version: "10" }).setToken(token);
+        const rest = new discord_js_1.REST({ version: "10" }).setToken(token);
         const commands = slashCommandRegistry.toJSON();
         console.log(`🔄 Deploying ${commands.length} slash commands...`);
-        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        await rest.put(discord_js_1.Routes.applicationCommands(clientId), { body: commands });
         console.log("✅ Slash commands deployed globally");
     }
     catch (err) {
@@ -80,12 +85,12 @@ async function deploySlashCommands() {
 bot.on("ready", async () => {
     console.log(`\n🤖 Bot ready as ${bot.user?.tag}`);
     // Load settings
-    settingsManager = await SettingsManager.load();
-    welcomeManager = await WelcomeManager.load();
+    settingsManager = await SettingsManager_js_1.SettingsManager.load();
+    welcomeManager = await WelcomeManager_js_1.WelcomeManager.load();
     console.log("⚙️  Settings loaded");
     console.log("🎉 Welcome system loaded");
     // Initialize GIF manager with database
-    gifManager = new GifManager();
+    gifManager = new GifManager_js_1.GifManager();
     try {
         await gifManager.initDatabase();
         console.log("💾 GIF database initialized");
@@ -100,15 +105,15 @@ bot.on("ready", async () => {
         console.error("Failed to initialize GIF database:", error);
     }
     // Initialize welcome handler
-    welcomeHandler = new WelcomeHandler(bot, welcomeManager, gifManager);
+    welcomeHandler = new WelcomeHandler_js_1.WelcomeHandler(bot, welcomeManager, gifManager);
     // Register slash commands
     registerSlashCommands();
     // Register GifCommand (needs gifManager)
-    slashCommandRegistry.register(new GifCommand(gifManager));
+    slashCommandRegistry.register(new GifCommand_js_1.GifCommand(gifManager));
     // Deploy slash commands to Discord
     await deploySlashCommands();
     // Start dashboard server
-    dashboardServer = new DashboardServer(WS_PORT);
+    dashboardServer = new DashboardServer_js_1.DashboardServer(WS_PORT);
     // Setup dashboard message handlers
     setupDashboardHandlers();
     // Start HTTP server for file uploads
@@ -155,16 +160,16 @@ bot.on("messageCreate", async (message) => {
  * Start HTTP server for file uploads
  */
 function startHttpServer() {
-    const app = express();
+    const app = (0, express_1.default)();
     // Middleware
-    app.use(express.json({ limit: "50mb" }));
-    app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    app.use(express_1.default.json({ limit: "50mb" }));
+    app.use(express_1.default.urlencoded({ limit: "50mb", extended: true }));
     // Health check
     app.get("/health", (_req, res) => {
         res.json({ status: "ok", service: "kkb-bot-upload" });
     });
     // Upload routes
-    app.use("/api/upload", createUploadRoutes({
+    app.use("/api/upload", (0, uploadRoutes_js_1.createUploadRoutes)({
         gifManager,
         maxFileSize: welcomeManager.get().gifMaxSize || 10 * 1024 * 1024,
     }));

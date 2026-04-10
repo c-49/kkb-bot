@@ -1,8 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DefaultCommandRegistry = void 0;
 /**
  * Default command registry implementation
  * Manages all registered commands for the bot
  */
-export class DefaultCommandRegistry {
+class DefaultCommandRegistry {
     constructor() {
         Object.defineProperty(this, "commands", {
             enumerable: true,
@@ -27,3 +30,4 @@ export class DefaultCommandRegistry {
         return this.commands.has(name);
     }
 }
+exports.DefaultCommandRegistry = DefaultCommandRegistry;

@@ -1,5 +1,6 @@
+"use strict";
 /**
  * Bot entry point
- * Imports and starts the main bot
+ * Imports and starts the bot
  */
-import "./bot.js";
+require("./bot.js");

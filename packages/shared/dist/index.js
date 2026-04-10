@@ -1,20 +1,24 @@
+"use strict";
 /**
  * Command System
  * Base types and interfaces for the extensible command system
  */
-export function createCommandName(name) {
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_WELCOME_SETTINGS = exports.DEFAULT_BOT_SETTINGS = void 0;
+exports.createCommandName = createCommandName;
+function createCommandName(name) {
     if (!name.trim()) {
         throw new Error("Command name cannot be empty");
     }
     return name.toLowerCase();
 }
-export const DEFAULT_BOT_SETTINGS = {
+exports.DEFAULT_BOT_SETTINGS = {
     prefix: "!",
     enabledCommands: [],
     maxImageSize: 5 * 1024 * 1024, // 5MB
     imageUploadPath: "./uploads",
 };
-export const DEFAULT_WELCOME_SETTINGS = {
+exports.DEFAULT_WELCOME_SETTINGS = {
     enabled: false,
     channelId: "",
     greetingMessage: "Welcome {newUser}! 🎉",

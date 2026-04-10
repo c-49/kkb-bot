@@ -1,14 +1,20 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createUploadRoutes = createUploadRoutes;
 // @ts-ignore - express types not yet installed
-import express from "express";
+const express_1 = __importDefault(require("express"));
 // @ts-ignore - multer types not yet installed
-import multer from "multer";
+const multer_1 = __importDefault(require("multer"));
 /**
  * Upload Routes
  * Handle file uploads from the dashboard
  */
 // Configure multer for in-memory storage
-const upload = multer({
-    storage: multer.memoryStorage(),
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
     limits: {
         fileSize: 50 * 1024 * 1024, // 50MB hard limit
     },
@@ -25,8 +31,8 @@ const upload = multer({
 /**
  * Create upload routes
  */
-export function createUploadRoutes(options) {
-    const router = express.Router();
+function createUploadRoutes(options) {
+    const router = express_1.default.Router();
     const { gifManager, maxFileSize = 10 * 1024 * 1024 } = options;
     /**
      * POST /upload/gif

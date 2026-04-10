@@ -1,4 +1,7 @@
-import { SlashCommandBuilder, AttachmentBuilder, } from "discord.js";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GifCommand = void 0;
+const discord_js_1 = require("discord.js");
 /**
  * /gif Slash Command
  * Multi-purpose GIF management command with subcommands
@@ -9,7 +12,7 @@ import { SlashCommandBuilder, AttachmentBuilder, } from "discord.js";
  * - /gif show <category> - Show a random GIF from a category
  * - /gif list [category] - List all categories or GIFs in a category
  */
-export class GifCommand {
+class GifCommand {
     constructor(gifManager) {
         Object.defineProperty(this, "gifManager", {
             enumerable: true,
@@ -21,7 +24,7 @@ export class GifCommand {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: new SlashCommandBuilder()
+            value: new discord_js_1.SlashCommandBuilder()
                 .setName("gif")
                 .setDescription("Manage and display GIFs by category")
                 .addSubcommand((sub) => sub
@@ -232,7 +235,7 @@ export class GifCommand {
         const selected = shuffled.slice(0, Math.min(count, gifs.length));
         // Send GIFs
         const files = selected.map((gif) => {
-            const attachment = new AttachmentBuilder(gif.path, { name: gif.name });
+            const attachment = new discord_js_1.AttachmentBuilder(gif.path, { name: gif.name });
             return attachment;
         });
         const content = selected.length === 1
@@ -289,3 +292,4 @@ export class GifCommand {
         }
     }
 }
+exports.GifCommand = GifCommand;

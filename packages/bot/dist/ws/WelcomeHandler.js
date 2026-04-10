@@ -1,9 +1,12 @@
+"use strict";
 /**
  * Welcome system handler
  * Manages greeting posts and GIF button responses
  */
-import { ChannelType, AttachmentBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } from "discord.js";
-export class WelcomeHandler {
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WelcomeHandler = void 0;
+const discord_js_1 = require("discord.js");
+class WelcomeHandler {
     constructor(client, welcomeManager, gifManager) {
         Object.defineProperty(this, "welcomeManager", {
             enumerable: true,
@@ -38,7 +41,7 @@ export class WelcomeHandler {
         }
         try {
             const channel = await this.client.channels.fetch(settings.channelId);
-            if (!channel || channel.type !== ChannelType.GuildText) {
+            if (!channel || channel.type !== discord_js_1.ChannelType.GuildText) {
                 console.error("Welcome channel not found or not a text channel");
                 return;
             }
@@ -47,15 +50,15 @@ export class WelcomeHandler {
             // Get a random GIF from "welcome" category
             const gifPath = await this.gifManager.getRandomGif("welcome");
             // Create button for others to send greeting GIFs
-            const giftButton = new ButtonBuilder()
+            const giftButton = new discord_js_1.ButtonBuilder()
                 .setCustomId(`welcome_gif_${userId}`)
                 .setLabel("Send a Welcome GIF! 🎁")
-                .setStyle(ButtonStyle.Primary);
-            const row = new ActionRowBuilder().addComponents(giftButton);
+                .setStyle(discord_js_1.ButtonStyle.Primary);
+            const row = new discord_js_1.ActionRowBuilder().addComponents(giftButton);
             // Send greeting
             if (gifPath) {
                 // Send with GIF attachment
-                const attachment = new AttachmentBuilder(gifPath);
+                const attachment = new discord_js_1.AttachmentBuilder(gifPath);
                 await channel.send({
                     content: greeting,
                     files: [attachment],
@@ -88,7 +91,7 @@ export class WelcomeHandler {
                     content: "No greeting GIFs available right now! 😔",
                 });
             }
-            const attachment = new AttachmentBuilder(gifPath);
+            const attachment = new discord_js_1.AttachmentBuilder(gifPath);
             const newUser = await this.client.users.fetch(userId);
             await buttonInteraction.editReply({
                 content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
@@ -111,3 +114,4 @@ export class WelcomeHandler {
         console.log("Welcome settings reloaded:", settings);
     }
 }
+exports.WelcomeHandler = WelcomeHandler;

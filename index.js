@@ -1,20 +1,14 @@
-// index.js (at root)
-const path = require('path');
+// index.js at root
 const { execSync } = require('child_process');
 
-// Build the bot
-console.log('Building bot...');
+console.log('Installing dependencies and building...');
 try {
-  execSync('npm run build', { 
-    cwd: __dirname,
-    stdio: 'inherit'
-  });
-  console.log('Build complete!');
+  execSync('npm install', { stdio: 'inherit' });
+  execSync('npm run build', { stdio: 'inherit' });
 } catch (error) {
-  console.error('Build failed:', error);
+  console.error('Build failed:', error.message);
   process.exit(1);
 }
 
-// Start the bot
 console.log('Starting bot...');
 require('./packages/bot/dist/bot.js');

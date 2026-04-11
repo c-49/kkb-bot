@@ -11,11 +11,15 @@
     "dev:dashboard": "workspace dashboard dev",
     "build": "npm run build -ws",
     "start": "node --enable-source-maps index.js",
+    "postinstall": "npm run build 2>/dev/null || true",
     "lint": "eslint .",
     "type-check": "tsc --noEmit"
   },
   "devDependencies": {
     "eslint": "^8.54.0",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
   }
 }

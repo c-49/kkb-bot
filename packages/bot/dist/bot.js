@@ -13,11 +13,13 @@ const SlashCommandRegistry_js_1 = require("./commands/SlashCommandRegistry.js");
 const examples_js_1 = require("./commands/examples.js");
 const Welcome_js_1 = require("./commands/Welcome.js");
 const GifCommand_js_1 = require("./commands/GifCommand.js");
+const ManageCommand_js_1 = require("./commands/ManageCommand.js");
 // Load environment variables
 dotenv_1.default.config();
 const SettingsManager_js_1 = require("./storage/SettingsManager.js");
 const WelcomeManager_js_1 = require("./storage/WelcomeManager.js");
 const GifManager_js_1 = require("./storage/GifManager.js");
+const CustomCommandManager_js_1 = require("./storage/CustomCommandManager.js");
 const DashboardServer_js_1 = require("./ws/DashboardServer.js");
 const WelcomeHandler_js_1 = require("./ws/WelcomeHandler.js");
 const uploadRoutes_js_1 = require("./routes/uploadRoutes.js");
@@ -49,6 +51,7 @@ let welcomeManager;
 let welcomeHandler;
 let dashboardServer;
 let gifManager;
+let customCommandManager;
 let httpServer;
 // Register default commands
 function registerCommands() {
@@ -76,9 +79,14 @@ async function deploySlashCommands() {
     }
     try {
         const rest = new discord_js_1.REST({ version: "10" }).setToken(token);
-        const commands = slashCommandRegistry.toJSON();
-        console.log(`🔄 Deploying ${commands.length} slash commands...`);
-        await rest.put(discord_js_1.Routes.applicationCommands(clientId), { body: commands });
+        const staticCommands = slashCommandRegistry.toJSON();
+        const ccm = customCommandManager;
+        const customCommands = ccm
+            ? (await ccm.listCommands()).map((cmd) => ccm.toDiscordCommand(cmd))
+            : [];
+        const allCommands = [...staticCommands, ...customCommands];
+        console.log(`🔄 Deploying ${allCommands.length} slash commands (${staticCommands.length} static, ${customCommands.length} custom)...`);
+        await rest.put(discord_js_1.Routes.applicationCommands(clientId), { body: allCommands });
         console.log("✅ Slash commands deployed globally");
     }
     catch (err) {
@@ -114,11 +122,15 @@ bot.on("ready", async () => {
     }
     // Initialize welcome handler
     welcomeHandler = new WelcomeHandler_js_1.WelcomeHandler(bot, welcomeManager, gifManager);
+    // Initialize custom command manager
+    customCommandManager = new CustomCommandManager_js_1.CustomCommandManager();
+    await customCommandManager.initDatabase();
     // Register slash commands
     registerSlashCommands();
-    // Register GifCommand (needs gifManager)
+    // Register commands that need runtime dependencies
     slashCommandRegistry.register(new GifCommand_js_1.GifCommand(gifManager));
-    // Deploy slash commands to Discord
+    slashCommandRegistry.register(new ManageCommand_js_1.ManageCommand(customCommandManager, deploySlashCommands));
+    // Deploy all slash commands (static + custom from DB)
     await deploySlashCommands();
     // Start dashboard server
     dashboardServer = new DashboardServer_js_1.DashboardServer(WS_PORT);
@@ -219,6 +231,7 @@ process.on("SIGINT", async () => {
     await bot.destroy();
     await dashboardServer?.close();
     await gifManager?.close();
+    await customCommandManager?.close();
     if (httpServer) {
         httpServer.close();
     }
@@ -304,26 +317,49 @@ bot.on("interactionCreate", async (interaction) => {
     // Handle slash commands
     if (interaction.isCommand() || interaction.isChatInputCommand()) {
         const command = slashCommandRegistry.get(interaction.commandName);
-        if (!command) {
-            console.warn(`No slash command handler for: ${interaction.commandName}`);
+        if (command) {
+            try {
+                await command.execute({
+                    userId: interaction.user.id,
+                    guildId: interaction.guildId || "",
+                    interaction,
+                });
+            }
+            catch (err) {
+                console.error(`Error executing slash command [${interaction.commandName}]:`, err);
+                await interaction
+                    .reply({ content: "⚠️ An error occurred executing the command", ephemeral: true })
+                    .catch(() => { });
+            }
             return;
         }
-        try {
-            await command.execute({
-                userId: interaction.user.id,
-                guildId: interaction.guildId || "",
-                interaction,
-            });
+        // Fall through to custom commands
+        const customCmd = await customCommandManager?.getCommand(interaction.commandName);
+        if (customCmd) {
+            try {
+                await interaction.deferReply();
+                const userId = interaction.user.id;
+                const targetId = customCmd.hasTarget
+                    ? interaction.options.getUser("target")?.id
+                    : undefined;
+                const text = customCommandManager.renderText(customCmd.textTemplate, userId, targetId);
+                if (customCmd.gifCategory) {
+                    const gifData = await gifManager.getRandomGif(customCmd.gifCategory);
+                    if (gifData.sourceUrl) {
+                        const embed = new discord_js_1.EmbedBuilder().setImage(gifData.sourceUrl).setColor(0x5865f2);
+                        await interaction.editReply({ content: text, embeds: [embed] });
+                        return;
+                    }
+                }
+                await interaction.editReply({ content: text });
+            }
+            catch (err) {
+                console.error(`Error executing custom command [${interaction.commandName}]:`, err);
+                await interaction.editReply({ content: "⚠️ An error occurred." }).catch(() => { });
+            }
+            return;
         }
-        catch (err) {
-            console.error(`Error executing slash command [${interaction.commandName}]:`, err);
-            await interaction
-                .reply({
-                content: "⚠️ An error occurred executing the command",
-                ephemeral: true,
-            })
-                .catch(() => { });
-        }
+        console.warn(`No handler for slash command: ${interaction.commandName}`);
     }
     // Handle button clicks
     if (interaction.isButton()) {

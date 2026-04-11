@@ -2,18 +2,20 @@ import dotenv from "dotenv";
 // @ts-ignore - express types not yet installed
 import express from "express";
 import path from "path";
-import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
+import { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } from "discord.js";
 import { DefaultCommandRegistry } from "./commands/CommandRegistry.js";
 import { SlashCommandRegistry } from "./commands/SlashCommandRegistry.js";
 import { PingCommand, HelloCommand } from "./commands/examples.js";
 import { WelcomeSlashCommand, WelcomeSetupSlashCommand } from "./commands/Welcome.js";
 import { GifCommand } from "./commands/GifCommand.js";
+import { ManageCommand } from "./commands/ManageCommand.js";
 
 // Load environment variables
 dotenv.config();
 import { SettingsManager } from "./storage/SettingsManager.js";
 import { WelcomeManager } from "./storage/WelcomeManager.js";
 import { GifManager } from "./storage/GifManager.js";
+import { CustomCommandManager } from "./storage/CustomCommandManager.js";
 import { DashboardServer } from "./ws/DashboardServer.js";
 import { WelcomeHandler } from "./ws/WelcomeHandler.js";
 import { createUploadRoutes } from "./routes/uploadRoutes.js";
@@ -51,6 +53,7 @@ let welcomeManager: WelcomeManager;
 let welcomeHandler: WelcomeHandler;
 let dashboardServer: DashboardServer;
 let gifManager: GifManager;
+let customCommandManager: CustomCommandManager | undefined;
 let httpServer: any;
 
 // Register default commands
@@ -83,11 +86,18 @@ async function deploySlashCommands(): Promise<void> {
 
   try {
     const rest = new REST({ version: "10" }).setToken(token);
-    const commands = slashCommandRegistry.toJSON();
+    const staticCommands = slashCommandRegistry.toJSON();
+    const ccm = customCommandManager;
+    const customCommands = ccm
+      ? (await ccm.listCommands()).map((cmd) => ccm.toDiscordCommand(cmd))
+      : [];
+    const allCommands = [...staticCommands, ...customCommands];
 
-    console.log(`🔄 Deploying ${commands.length} slash commands...`);
+    console.log(
+      `🔄 Deploying ${allCommands.length} slash commands (${staticCommands.length} static, ${customCommands.length} custom)...`
+    );
 
-    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    await rest.put(Routes.applicationCommands(clientId), { body: allCommands });
 
     console.log("✅ Slash commands deployed globally");
   } catch (err) {
@@ -131,13 +141,18 @@ bot.on("ready", async () => {
   // Initialize welcome handler
   welcomeHandler = new WelcomeHandler(bot, welcomeManager, gifManager);
 
+  // Initialize custom command manager
+  customCommandManager = new CustomCommandManager();
+  await customCommandManager.initDatabase();
+
   // Register slash commands
   registerSlashCommands();
-  
-  // Register GifCommand (needs gifManager)
-  slashCommandRegistry.register(new GifCommand(gifManager));
 
-  // Deploy slash commands to Discord
+  // Register commands that need runtime dependencies
+  slashCommandRegistry.register(new GifCommand(gifManager));
+  slashCommandRegistry.register(new ManageCommand(customCommandManager, deploySlashCommands));
+
+  // Deploy all slash commands (static + custom from DB)
   await deploySlashCommands();
 
   // Start dashboard server
@@ -255,6 +270,7 @@ process.on("SIGINT", async () => {
   await bot.destroy();
   await dashboardServer?.close();
   await gifManager?.close();
+  await customCommandManager?.close();
   if (httpServer) {
     httpServer.close();
   }
@@ -352,26 +368,53 @@ bot.on("interactionCreate", async (interaction) => {
   // Handle slash commands
   if (interaction.isCommand() || interaction.isChatInputCommand()) {
     const command = slashCommandRegistry.get(interaction.commandName);
-    if (!command) {
-      console.warn(`No slash command handler for: ${interaction.commandName}`);
+
+    if (command) {
+      try {
+        await command.execute({
+          userId: interaction.user.id,
+          guildId: interaction.guildId || "",
+          interaction,
+        });
+      } catch (err) {
+        console.error(`Error executing slash command [${interaction.commandName}]:`, err);
+        await interaction
+          .reply({ content: "⚠️ An error occurred executing the command", ephemeral: true })
+          .catch(() => {});
+      }
       return;
     }
 
-    try {
-      await command.execute({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || "",
-        interaction,
-      });
-    } catch (err) {
-      console.error(`Error executing slash command [${interaction.commandName}]:`, err);
-      await interaction
-        .reply({
-          content: "⚠️ An error occurred executing the command",
-          ephemeral: true,
-        })
-        .catch(() => {});
+    // Fall through to custom commands
+    const customCmd = await customCommandManager?.getCommand(interaction.commandName);
+    if (customCmd) {
+      try {
+        await interaction.deferReply();
+        const userId = interaction.user.id;
+        const targetId: string | undefined = customCmd.hasTarget
+          ? (interaction as any).options.getUser("target")?.id
+          : undefined;
+
+        const text = customCommandManager!.renderText(customCmd.textTemplate, userId, targetId);
+
+        if (customCmd.gifCategory) {
+          const gifData = await gifManager.getRandomGif(customCmd.gifCategory);
+          if (gifData.sourceUrl) {
+            const embed = new EmbedBuilder().setImage(gifData.sourceUrl).setColor(0x5865f2);
+            await interaction.editReply({ content: text, embeds: [embed] });
+            return;
+          }
+        }
+
+        await interaction.editReply({ content: text });
+      } catch (err) {
+        console.error(`Error executing custom command [${interaction.commandName}]:`, err);
+        await interaction.editReply({ content: "⚠️ An error occurred." }).catch(() => {});
+      }
+      return;
     }
+
+    console.warn(`No handler for slash command: ${interaction.commandName}`);
   }
 
   // Handle button clicks

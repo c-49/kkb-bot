@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GifManager = void 0;
 const promises_1 = __importDefault(require("fs/promises"));
+const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const crypto_1 = require("crypto");
 // @ts-ignore - sharp types not yet installed
@@ -41,9 +42,33 @@ class GifManager {
             writable: true,
             value: 20
         });
+        Object.defineProperty(this, "displayWidth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "displayHeight", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         // Use GIF_STORAGE_PATH env var (for Render disk), fall back to ./gifs
         this.giftFolderPath = giftFolderPath || process.env.GIF_STORAGE_PATH || "./gifs";
         this.resizeCachePath = path_1.default.join(this.giftFolderPath, "resized");
+        // Load display dimensions from config.json, fall back to 256×256
+        try {
+            const configPath = path_1.default.resolve(process.cwd(), "config.json");
+            const raw = fs_1.default.readFileSync(configPath, "utf8");
+            const config = JSON.parse(raw);
+            this.displayWidth = config?.gif?.width ?? 256;
+            this.displayHeight = config?.gif?.height ?? 256;
+        }
+        catch {
+            this.displayWidth = 256;
+            this.displayHeight = 256;
+        }
         this.pool = promise_1.default.createPool({
             uri: process.env.DATABASE_URL,
             waitForConnections: true,
@@ -51,6 +76,7 @@ class GifManager {
             queueLimit: 0,
         });
         console.log(`📁 GIF storage path: ${this.giftFolderPath}`);
+        console.log(`🖼️  GIF display size: ${this.displayWidth}×${this.displayHeight}`);
     }
     /**
      * Initialize database schema
@@ -352,6 +378,13 @@ class GifManager {
             console.error("Failed to get random GIF:", error);
             return { path: null, sourceUrl: null };
         }
+    }
+    /**
+     * Resize a GIF for Discord display using the dimensions from config.json.
+     * Returns the path to the resized GIF, or the original path if resizing fails.
+     */
+    async resizeForDisplay(id, filePath) {
+        return this.getResizedGif(id, filePath, this.displayWidth, this.displayHeight);
     }
     /**
      * Get resized GIF, creating cache if needed

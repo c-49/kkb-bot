@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 // @ts-ignore - sharp types not yet installed
@@ -17,11 +18,25 @@ export class GifManager {
   private giftFolderPath: string;
   private resizeCachePath: string;
   private readonly MAX_GIFS_PER_CATEGORY = 20;
+  private displayWidth: number;
+  private displayHeight: number;
 
   constructor(giftFolderPath?: string) {
     // Use GIF_STORAGE_PATH env var (for Render disk), fall back to ./gifs
     this.giftFolderPath = giftFolderPath || process.env.GIF_STORAGE_PATH || "./gifs";
     this.resizeCachePath = path.join(this.giftFolderPath, "resized");
+
+    // Load display dimensions from config.json, fall back to 256×256
+    try {
+      const configPath = path.resolve(process.cwd(), "config.json");
+      const raw = fsSync.readFileSync(configPath, "utf8");
+      const config = JSON.parse(raw) as { gif?: { width?: number; height?: number } };
+      this.displayWidth = config?.gif?.width ?? 256;
+      this.displayHeight = config?.gif?.height ?? 256;
+    } catch {
+      this.displayWidth = 256;
+      this.displayHeight = 256;
+    }
 
     this.pool = mysql.createPool({
       uri: process.env.DATABASE_URL,
@@ -29,8 +44,9 @@ export class GifManager {
       connectionLimit: 10,
       queueLimit: 0,
     });
-    
+
     console.log(`📁 GIF storage path: ${this.giftFolderPath}`);
+    console.log(`🖼️  GIF display size: ${this.displayWidth}×${this.displayHeight}`);
   }
 
   /**
@@ -384,6 +400,14 @@ export class GifManager {
       console.error("Failed to get random GIF:", error);
       return { path: null, sourceUrl: null };
     }
+  }
+
+  /**
+   * Resize a GIF for Discord display using the dimensions from config.json.
+   * Returns the path to the resized GIF, or the original path if resizing fails.
+   */
+  async resizeForDisplay(id: string, filePath: string): Promise<string> {
+    return this.getResizedGif(id, filePath, this.displayWidth, this.displayHeight);
   }
 
   /**

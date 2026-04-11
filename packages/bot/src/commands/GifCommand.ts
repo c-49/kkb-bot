@@ -4,6 +4,11 @@ import {
 } from "discord.js";
 import { ISlashCommand, SlashCommandContext } from "@kkb/shared";
 import { GifManager } from "../storage/GifManager.js";
+import fs from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 /**
  * /gif Slash Command
@@ -88,6 +93,11 @@ export class GifCommand implements ISlashCommand {
             .setRequired(false)
             .setAutocomplete(true)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("commit")
+        .setDescription("Batch commit all new GIFs to the git repository (Admin only)")
     );
 
   constructor(private gifManager: GifManager) {}
@@ -109,6 +119,9 @@ export class GifCommand implements ISlashCommand {
           break;
         case "list":
           await this.handleList(interaction);
+          break;
+        case "commit":
+          await this.handleCommit(interaction);
           break;
         default:
           await interaction.reply({
@@ -249,7 +262,6 @@ export class GifCommand implements ISlashCommand {
 
     await interaction.deferReply();
 
-    // Check if category exists
     const category = await this.gifManager.getCategoryByName(categoryName);
     if (!category) {
       await interaction.editReply({
@@ -258,7 +270,6 @@ export class GifCommand implements ISlashCommand {
       return;
     }
 
-    // Get GIFs in the category
     const gifs = await this.gifManager.listGifs(categoryName);
     if (gifs.length === 0) {
       await interaction.editReply({
@@ -267,41 +278,74 @@ export class GifCommand implements ISlashCommand {
       return;
     }
 
-    // Shuffle and pick up to 'count' GIFs
     const shuffled = gifs.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(count, gifs.length));
 
-    // For each selected GIF, get its sourceUrl (original link)
-    // Need to fetch source_url from DB for each GIF
-    const connection = await this.gifManager["pool"].getConnection();
+    // Resize each GIF to max 480×480 and send as file attachments so Discord
+    // shows them at a controlled size instead of full Tenor dimensions.
+    const files: AttachmentBuilder[] = [];
+    for (const gif of selected) {
+      try {
+        const resizedPath = await this.gifManager.resizeForDisplay(gif.id, gif.path);
+        const buffer = await fs.readFile(resizedPath);
+        files.push(new AttachmentBuilder(buffer, { name: `${gif.id}.gif` }));
+      } catch (error) {
+        console.error(`[GifCommand] Failed to prepare GIF ${gif.id}:`, error);
+      }
+    }
+
+    if (files.length === 0) {
+      await interaction.editReply({
+        content: `❌ Failed to load GIFs from **${categoryName}**.`,
+      });
+      return;
+    }
+
+    const content =
+      files.length === 1
+        ? `🎬 From **${categoryName}**:`
+        : `🎬 ${files.length} GIFs from **${categoryName}**:`;
+
+    await interaction.editReply({ content, files });
+  }
+
+  private async handleCommit(interaction: any): Promise<void> {
+    if (!interaction.member?.permissions?.has("Administrator")) {
+      await interaction.reply({
+        content: "❌ You need Administrator permission to commit GIFs.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
     try {
-      const embeds = [];
-      for (const gif of selected) {
-        const [rows] = await connection.query(
-          `SELECT source_url FROM gifs WHERE id = ?`,
-          [gif.id]
-        );
-        const sourceUrl = Array.isArray(rows) && rows.length > 0 ? rows[0].source_url : null;
-        if (sourceUrl) {
-          embeds.push({
-            title: gif.name,
-            image: { url: sourceUrl },
-            color: 0x5865f2,
-          });
-        }
+      const { stdout: rootOut } = await execAsync("git rev-parse --show-toplevel");
+      const root = rootOut.trim();
+
+      // Check if there are any uncommitted GIF files
+      const { stdout: statusOut } = await execAsync(`git -C "${root}" status --porcelain gifs/`);
+      if (!statusOut.trim()) {
+        await interaction.editReply({
+          content: "ℹ️ No new GIFs to commit — everything is already up to date.",
+        });
+        return;
       }
 
-      const content =
-        embeds.length === 1
-          ? `🎬 From **${categoryName}**:`
-          : `🎬 ${embeds.length} GIFs from **${categoryName}**:`;
+      const fileCount = statusOut.trim().split("\n").length;
+      await execAsync(`git -C "${root}" add gifs/`);
+      await execAsync(`git -C "${root}" commit -m "chore: add new GIFs [skip ci]"`);
+      await execAsync(`git -C "${root}" push`);
 
       await interaction.editReply({
-        content,
-        embeds,
+        content: `✅ Committed and pushed **${fileCount}** GIF file(s) to the repository.`,
       });
-    } finally {
-      connection.release();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      await interaction.editReply({
+        content: `❌ Git operation failed:\n\`\`\`\n${msg.slice(0, 800)}\n\`\`\``,
+      });
     }
   }
 

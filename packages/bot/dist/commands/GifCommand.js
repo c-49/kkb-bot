@@ -250,10 +250,9 @@ class GifCommand {
         const selected = shuffled.slice(0, Math.min(count, gifs.length));
         const embeds = selected
             .filter((gif) => gif.sourceUrl)
-            .map((gif) => ({
-            image: { url: gif.sourceUrl },
-            color: 0x5865f2,
-        }));
+            .map((gif) => new discord_js_1.EmbedBuilder()
+            .setImage(gif.sourceUrl)
+            .setColor(0x5865f2));
         if (embeds.length === 0) {
             await interaction.editReply({
                 content: `❌ No GIFs in **${categoryName}** have a source URL.`,

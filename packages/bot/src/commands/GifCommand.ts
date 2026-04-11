@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { ISlashCommand, SlashCommandContext } from "@kkb/shared";
 import { GifManager } from "../storage/GifManager.js";
 import fs from "fs/promises";
@@ -307,10 +307,11 @@ export class GifCommand implements ISlashCommand {
 
     const embeds = selected
       .filter((gif) => gif.sourceUrl)
-      .map((gif) => ({
-        image: { url: gif.sourceUrl! },
-        color: 0x5865f2,
-      }));
+      .map((gif) =>
+        new EmbedBuilder()
+          .setImage(gif.sourceUrl!)
+          .setColor(0x5865f2)
+      );
 
     if (embeds.length === 0) {
       await interaction.editReply({

@@ -98,16 +98,13 @@ class WelcomeHandler {
         try {
             await buttonInteraction.deferReply();
             const gifData = await this.gifManager.getRandomGif("welcome");
-            if (!gifData.path) {
+            if (!gifData.sourceUrl) {
                 return buttonInteraction.editReply({
                     content: "No greeting GIFs available right now! 😔",
                 });
             }
             const newUser = await this.client.users.fetch(userId);
             try {
-                if (!gifData.sourceUrl) {
-                    throw new Error("No source URL for GIF");
-                }
                 const embed = new discord_js_1.EmbedBuilder()
                     .setImage(gifData.sourceUrl)
                     .setColor(0x5865f2); // Discord blue

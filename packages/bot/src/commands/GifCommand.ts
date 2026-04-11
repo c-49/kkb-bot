@@ -230,7 +230,13 @@ export class GifCommand implements ISlashCommand {
           );
         }
 
-        sourceUrl = match[1];
+        // Tenor's og:image uses media1.tenor.com/m/{id}/... which Discord can't embed.
+        // Convert to the c.tenor.com/{id}/tenor.gif format that Discord renders correctly.
+        const rawUrl = match[1];
+        const tenorIdMatch = rawUrl.match(/\/\/media\d*\.tenor\.com\/m\/([^/]+)\//);
+        sourceUrl = tenorIdMatch
+          ? `https://c.tenor.com/${tenorIdMatch[1]}/tenor.gif`
+          : rawUrl;
         console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
         const mediaResponse = await fetch(sourceUrl);
         if (!mediaResponse.ok) {

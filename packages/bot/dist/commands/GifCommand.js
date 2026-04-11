@@ -190,7 +190,13 @@ class GifCommand {
                     throw new Error("Could not extract a direct GIF URL from that Tenor page.\n" +
                         "Right-click the GIF on Tenor → **Copy image address** and paste that URL instead.");
                 }
-                sourceUrl = match[1];
+                // Tenor's og:image uses media1.tenor.com/m/{id}/... which Discord can't embed.
+                // Convert to the c.tenor.com/{id}/tenor.gif format that Discord renders correctly.
+                const rawUrl = match[1];
+                const tenorIdMatch = rawUrl.match(/\/\/media\d*\.tenor\.com\/m\/([^/]+)\//);
+                sourceUrl = tenorIdMatch
+                    ? `https://c.tenor.com/${tenorIdMatch[1]}/tenor.gif`
+                    : rawUrl;
                 console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
                 const mediaResponse = await fetch(sourceUrl);
                 if (!mediaResponse.ok) {

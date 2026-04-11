@@ -42,16 +42,12 @@ class GifCommand {
                 .setMaxLength(200)))
                 .addSubcommand((sub) => sub
                 .setName("upload")
-                .setDescription("Upload a GIF to a category (use in DM)")
+                .setDescription("Upload a GIF to a category (use in DM) - Attach file after using command")
                 .addStringOption((opt) => opt
                 .setName("category")
                 .setDescription("Category to upload to")
                 .setRequired(true)
-                .setAutocomplete(true))
-                .addAttachmentOption((opt) => opt
-                .setName("file")
-                .setDescription("GIF, PNG, or JPG file (max 10MB)")
-                .setRequired(true)))
+                .setAutocomplete(true)))
                 .addSubcommand((sub) => sub
                 .setName("show")
                 .setDescription("Show a random GIF from a category")
@@ -143,51 +139,82 @@ class GifCommand {
             return;
         }
         const categoryName = interaction.options.getString("category");
-        const attachment = interaction.options.getAttachment("file");
-        if (!attachment) {
-            await interaction.reply({
-                content: "❌ No file provided.",
-                ephemeral: true,
-            });
-            return;
-        }
-        // Validate file type
-        const validTypes = [
-            "image/gif",
-            "image/png",
-            "image/jpeg",
-            "image/jpg",
-        ];
-        if (!validTypes.includes(attachment.contentType || "")) {
-            await interaction.reply({
-                content: `❌ Invalid file type. Only GIF, PNG, and JPG allowed. Received: ${attachment.contentType}`,
-                ephemeral: true,
-            });
-            return;
-        }
-        // Validate file size (10MB)
-        if (attachment.size > 10 * 1024 * 1024) {
-            await interaction.reply({
-                content: `❌ File too large. Max 10MB, received ${(attachment.size / 1024 / 1024).toFixed(2)}MB`,
-                ephemeral: true,
-            });
-            return;
-        }
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.reply({
+            content: `📁 Uploading GIF to **${categoryName}**\n\n⏰ Please send the image file (GIF, PNG, or JPG - max 10MB) in your next message.`,
+            ephemeral: false,
+        });
         try {
-            // Download attachment
+            // Wait for user to send an image
+            const messages = await interaction.channel.awaitMessages({
+                filter: (msg) => msg.author.id === interaction.user.id && msg.attachments.size > 0,
+                max: 1,
+                time: 60000, // 60 seconds
+            });
+            if (messages.size === 0) {
+                await interaction.followUp({
+                    content: "❌ Timeout - No file received. Please try again.",
+                    ephemeral: true,
+                });
+                return;
+            }
+            const message = messages.first();
+            const attachment = message.attachments.first();
+            if (!attachment) {
+                await interaction.followUp({
+                    content: "❌ No attachment found in message.",
+                    ephemeral: true,
+                });
+                return;
+            }
+            // Validate file type
+            const validTypes = [
+                "image/gif",
+                "image/png",
+                "image/jpeg",
+                "image/jpg",
+            ];
+            // Check by extension if contentType is missing
+            const fileExtension = attachment.name?.split('.').pop()?.toLowerCase();
+            const validExtensions = ['gif', 'png', 'jpg', 'jpeg'];
+            const hasValidExtension = fileExtension && validExtensions.includes(fileExtension);
+            const hasValidType = attachment.contentType && validTypes.includes(attachment.contentType);
+            if (!hasValidExtension && !hasValidType) {
+                await interaction.followUp({
+                    content: `❌ Invalid file type. Only GIF, PNG, and JPG allowed. Received: ${attachment.name}`,
+                    ephemeral: true,
+                });
+                return;
+            }
+            // Validate file size (10MB)
+            if (attachment.size > 10 * 1024 * 1024) {
+                await interaction.followUp({
+                    content: `❌ File too large. Max 10MB, received ${(attachment.size / 1024 / 1024).toFixed(2)}MB`,
+                    ephemeral: true,
+                });
+                return;
+            }
+            // Download and process file
             const response = await fetch(attachment.url);
             const buffer = await response.arrayBuffer();
             // Upload to GIF manager
             const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), attachment.name || "unnamed", interaction.user.id);
-            await interaction.editReply({
+            await interaction.followUp({
                 content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB`,
+                ephemeral: true,
             });
+            // Delete the user's file message to keep chat clean
+            try {
+                await message.delete();
+            }
+            catch (_) {
+                // Ignore delete errors
+            }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : "Upload failed";
-            await interaction.editReply({
-                content: `❌ ${errorMsg}`,
+            await interaction.followUp({
+                content: `❌ Error: ${errorMsg}`,
+                ephemeral: true,
             });
         }
     }

@@ -130,16 +130,6 @@ class GifCommand {
         });
     }
     async handleUpload(interaction) {
-        // Check if user is admin/mod
-        const isAdmin = interaction.member?.permissions?.has("Administrator");
-        const isMod = interaction.member?.roles?.cache?.some((role) => role.name.toLowerCase() === "moderator");
-        if (!isAdmin && !isMod) {
-            await interaction.reply({
-                content: "❌ Only admins and mods can upload GIFs.",
-                ephemeral: true,
-            });
-            return;
-        }
         // Can only use in DM
         if (interaction.guild) {
             await interaction.reply({
@@ -148,6 +138,8 @@ class GifCommand {
             });
             return;
         }
+        // In DMs, allow any user (they've already authorized the bot)
+        // If we wanted to restrict to admins/mods, they should use the command in the guild first
         const categoryName = interaction.options.getString("category");
         await interaction.reply({
             content: `📤 Ready to upload to **${categoryName}**!\n\nPlease upload your GIF file below (GIF, PNG, or JPG - max 10MB).\n\n_You have 5 minutes to upload._`,

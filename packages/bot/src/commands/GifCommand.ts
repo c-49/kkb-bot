@@ -156,20 +156,6 @@ export class GifCommand implements ISlashCommand {
   }
 
   private async handleUpload(interaction: any): Promise<void> {
-    // Check if user is admin/mod
-    const isAdmin = interaction.member?.permissions?.has("Administrator");
-    const isMod = interaction.member?.roles?.cache?.some(
-      (role: any) => role.name.toLowerCase() === "moderator"
-    );
-
-    if (!isAdmin && !isMod) {
-      await interaction.reply({
-        content: "❌ Only admins and mods can upload GIFs.",
-        ephemeral: true,
-      });
-      return;
-    }
-
     // Can only use in DM
     if (interaction.guild) {
       await interaction.reply({
@@ -179,6 +165,9 @@ export class GifCommand implements ISlashCommand {
       });
       return;
     }
+
+    // In DMs, allow any user (they've already authorized the bot)
+    // If we wanted to restrict to admins/mods, they should use the command in the guild first
 
     const categoryName = interaction.options.getString("category");
 

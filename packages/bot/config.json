@@ -2,5 +2,9 @@
   "gif": {
     "width": 256,
     "height": 256
+  },
+  "git": {
+    "userName": "c-49",
+    "userEmail": "reithc4@gmail.com"
   }
 }

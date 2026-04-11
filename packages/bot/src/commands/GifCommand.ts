@@ -5,6 +5,7 @@ import {
 import { ISlashCommand, SlashCommandContext } from "@kkb/shared";
 import { GifManager } from "../storage/GifManager.js";
 import fs from "fs/promises";
+import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -321,6 +322,23 @@ export class GifCommand implements ISlashCommand {
     await interaction.deferReply({ ephemeral: true });
 
     try {
+      // Read git identity from config.json, fall back to defaults
+      let gitName = "KKB Bot";
+      let gitEmail = "kkbbot@kkb";
+      try {
+        const configRaw = await fs.readFile(
+          path.resolve(process.cwd(), "config.json"),
+          "utf8"
+        );
+        const config = JSON.parse(configRaw) as {
+          git?: { userName?: string; userEmail?: string };
+        };
+        gitName = config?.git?.userName ?? gitName;
+        gitEmail = config?.git?.userEmail ?? gitEmail;
+      } catch {
+        // config.json missing or malformed — use defaults above
+      }
+
       const { stdout: rootOut } = await execAsync("git rev-parse --show-toplevel");
       const root = rootOut.trim();
 
@@ -334,8 +352,10 @@ export class GifCommand implements ISlashCommand {
       }
 
       const fileCount = statusOut.trim().split("\n").length;
+      // Pass identity inline so no global git config is needed on the server
+      const identity = `-c user.name="${gitName}" -c user.email="${gitEmail}"`;
       await execAsync(`git -C "${root}" add gifs/`);
-      await execAsync(`git -C "${root}" commit -m "chore: add new GIFs [skip ci]"`);
+      await execAsync(`git -C "${root}" ${identity} commit -m "chore: add new GIFs [skip ci]"`);
       await execAsync(`git -C "${root}" push`);
 
       await interaction.editReply({

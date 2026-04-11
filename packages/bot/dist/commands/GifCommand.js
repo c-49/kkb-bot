@@ -113,8 +113,9 @@ class GifCommand {
         }
     }
     async handleCreate(interaction) {
+        var _a, _b;
         // Check permissions (admin only)
-        if (!interaction.member?.permissions?.has("Administrator")) {
+        if (!((_b = (_a = interaction.member) === null || _a === void 0 ? void 0 : _a.permissions) === null || _b === void 0 ? void 0 : _b.has("Administrator"))) {
             await interaction.reply({
                 content: "❌ You need Administrator permission to create categories.",
                 ephemeral: true,
@@ -130,9 +131,10 @@ class GifCommand {
         });
     }
     async handleUpload(interaction) {
+        var _a, _b, _c, _d, _e;
         // Check if user is admin/mod
-        const isAdmin = interaction.member?.permissions?.has("Administrator");
-        const isMod = interaction.member?.roles?.cache?.some((role) => role.name.toLowerCase() === "moderator");
+        const isAdmin = (_b = (_a = interaction.member) === null || _a === void 0 ? void 0 : _a.permissions) === null || _b === void 0 ? void 0 : _b.has("Administrator");
+        const isMod = (_e = (_d = (_c = interaction.member) === null || _c === void 0 ? void 0 : _c.roles) === null || _d === void 0 ? void 0 : _d.cache) === null || _e === void 0 ? void 0 : _e.some((role) => role.name.toLowerCase() === "moderator");
         if (!isAdmin && !isMod) {
             await interaction.reply({
                 content: "❌ Only admins and mods can upload GIFs.",

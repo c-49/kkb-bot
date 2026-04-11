@@ -21,7 +21,8 @@ class DefaultCommandRegistry {
         this.commands.set(command.name, command);
     }
     get(name) {
-        return this.commands.get(name) ?? null;
+        var _a;
+        return (_a = this.commands.get(name)) !== null && _a !== void 0 ? _a : null;
     }
     all() {
         return Array.from(this.commands.values());

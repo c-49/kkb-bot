@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 // @ts-ignore - express types not yet installed
 import express from "express";
+import path from "path";
 import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
 import { DefaultCommandRegistry } from "./commands/CommandRegistry.js";
 import { SlashCommandRegistry } from "./commands/SlashCommandRegistry.js";
@@ -210,6 +211,28 @@ function startHttpServer(): void {
     gifManager,
     maxFileSize: welcomeManager.get().gifMaxSize || 10 * 1024 * 1024,
   }));
+
+  // Serve GIF files
+  app.get("/gifs/:category/:filename", async (req: any, res: any, next: any) => {
+    try {
+      const { category, filename } = req.params;
+      const filePath = path.join(process.env.GIF_STORAGE_PATH || "./gifs", category, filename);
+      
+      // Security: prevent directory traversal
+      const normalizedPath = path.normalize(filePath);
+      const basePath = path.normalize(process.env.GIF_STORAGE_PATH || "./gifs");
+      
+      if (!normalizedPath.startsWith(basePath)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      res.setHeader("Cache-Control", "public, max-age=31536000"); // 1 year cache
+      res.setHeader("Content-Type", "image/gif");
+      res.sendFile(filePath);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // Error handling
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

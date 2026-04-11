@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 // @ts-ignore - express types not yet installed
 const express_1 = __importDefault(require("express"));
+const path_1 = __importDefault(require("path"));
 const discord_js_1 = require("discord.js");
 const CommandRegistry_js_1 = require("./commands/CommandRegistry.js");
 const SlashCommandRegistry_js_1 = require("./commands/SlashCommandRegistry.js");
@@ -180,6 +181,25 @@ function startHttpServer() {
         gifManager,
         maxFileSize: welcomeManager.get().gifMaxSize || 10 * 1024 * 1024,
     }));
+    // Serve GIF files
+    app.get("/gifs/:category/:filename", async (req, res, next) => {
+        try {
+            const { category, filename } = req.params;
+            const filePath = path_1.default.join(process.env.GIF_STORAGE_PATH || "./gifs", category, filename);
+            // Security: prevent directory traversal
+            const normalizedPath = path_1.default.normalize(filePath);
+            const basePath = path_1.default.normalize(process.env.GIF_STORAGE_PATH || "./gifs");
+            if (!normalizedPath.startsWith(basePath)) {
+                return res.status(403).json({ error: "Access denied" });
+            }
+            res.setHeader("Cache-Control", "public, max-age=31536000"); // 1 year cache
+            res.setHeader("Content-Type", "image/gif");
+            res.sendFile(filePath);
+        }
+        catch (err) {
+            next(err);
+        }
+    });
     // Error handling
     app.use((err, _req, res, _next) => {
         console.error("HTTP error:", err);

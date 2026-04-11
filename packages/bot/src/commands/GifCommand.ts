@@ -258,7 +258,20 @@ export class GifCommand implements ISlashCommand {
       return;
     }
 
-    // Get random GIFs
+    // Get config-defined width/height for GIFs
+    let width = 256;
+    let height = 256;
+    try {
+      const config = await import("../../config.json", { assert: { type: "json" } });
+      if (config?.default?.gif) {
+        width = config.default.gif.width || width;
+        height = config.default.gif.height || height;
+      }
+    } catch (e) {
+      // fallback to defaults
+    }
+
+    // Get random GIFs (resized)
     const gifs = await this.gifManager.listGifs(categoryName);
     if (gifs.length === 0) {
       await interaction.editReply({
@@ -271,10 +284,35 @@ export class GifCommand implements ISlashCommand {
     const shuffled = gifs.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(count, gifs.length));
 
-    // Send GIFs
-    const files = selected.map((gif) => {
-      const attachment = new AttachmentBuilder(gif.path, { name: gif.name });
-      return attachment;
+    // For each selected GIF, get resized path
+    const resizedGifData = await Promise.all(
+      selected.map(async (gif) => {
+        const resizedPath = await this.gifManager["getResizedGif"](gif.id, gif.path, width, height);
+        return { ...gif, resizedPath };
+      })
+    );
+
+    // Build HTTP base URL
+    const httpPort = process.env.HTTP_PORT || 3000;
+    const httpHost = process.env.HTTP_HOST || "localhost";
+    const httpBaseUrl = `http://${httpHost}:${httpPort}`;
+
+    // Helper to get HTTP URL for a GIF
+    function getGifHttpUrl(filePath: string): string {
+      const parts = filePath.split(/[\/\\]/);
+      const category = parts[parts.length - 2];
+      const filename = parts[parts.length - 1];
+      return `${httpBaseUrl}/gifs/${category}/${filename}`;
+    }
+
+    // Send GIFs as embeds (using resized paths)
+    const embeds = resizedGifData.map((gif) => {
+      const url = getGifHttpUrl(gif.resizedPath);
+      return {
+        title: gif.name,
+        image: { url },
+        color: 0x5865f2,
+      };
     });
 
     const content =
@@ -284,7 +322,7 @@ export class GifCommand implements ISlashCommand {
 
     await interaction.editReply({
       content,
-      files,
+      embeds,
     });
   }
 

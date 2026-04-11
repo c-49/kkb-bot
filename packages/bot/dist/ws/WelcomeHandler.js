@@ -38,7 +38,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WelcomeHandler = void 0;
-const promises_1 = require("fs/promises");
 const discord_js_1 = require("discord.js");
 class WelcomeHandler {
     constructor(client, welcomeManager, gifManager) {
@@ -60,9 +59,30 @@ class WelcomeHandler {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "httpBaseUrl", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         this.client = client;
         this.welcomeManager = welcomeManager;
         this.gifManager = gifManager;
+        // Build base URL from environment or use localhost
+        const httpPort = process.env.HTTP_PORT || 3000;
+        const httpHost = process.env.HTTP_HOST || "localhost";
+        this.httpBaseUrl = `http://${httpHost}:${httpPort}`;
+    }
+    /**
+     * Convert file path to HTTP URL
+     */
+    getGifHttpUrl(filePath) {
+        // Extract category and filename from path
+        // Path format: ./gifs/category/filename.gif
+        const parts = filePath.split(/[\/\\]/);
+        const category = parts[parts.length - 2];
+        const filename = parts[parts.length - 1];
+        return `${this.httpBaseUrl}/gifs/${category}/${filename}`;
     }
     /**
      * Post a greeting when a new user joins
@@ -81,8 +101,21 @@ class WelcomeHandler {
             }
             const user = await this.client.users.fetch(userId);
             const greeting = settings.greetingMessage.replace("{newUser}", `<@${userId}>`);
-            // Get a random GIF from "welcome" category
-            const gifData = await this.gifManager.getRandomGif("welcome");
+            // Get config-defined width/height for GIFs
+            let width = 256;
+            let height = 256;
+            try {
+                const config = await Promise.resolve().then(() => __importStar(require("../../config.json")));
+                if (config?.default?.gif) {
+                    width = config.default.gif.width || width;
+                    height = config.default.gif.height || height;
+                }
+            }
+            catch (e) {
+                // fallback to defaults
+            }
+            // Get a random resized GIF from "welcome" category
+            const gifData = await this.gifManager.getRandomGif("welcome", width, height);
             // Create button for others to send greeting GIFs
             const giftButton = new discord_js_1.ButtonBuilder()
                 .setCustomId(`welcome_gif_${userId}`)
@@ -90,47 +123,28 @@ class WelcomeHandler {
                 .setStyle(discord_js_1.ButtonStyle.Primary);
             const row = new discord_js_1.ActionRowBuilder().addComponents(giftButton);
             // Send greeting with embed for GIF if available
-            if (gifData.sourceUrl) {
-                const embed = new discord_js_1.EmbedBuilder()
-                    .setImage(gifData.sourceUrl)
-                    .setColor(0x5865f2); // Discord blue
-                await channel.send({
-                    content: greeting,
-                    embeds: [embed],
-                    components: [row],
-                });
-                console.log(`✅ Posted greeting for ${user.tag} with GIF embed`);
-            }
-            else if (gifData.path) {
+            if (gifData.path) {
                 try {
-                    console.log(`[WelcomeHandler] Attempting to read GIF from: ${gifData.path}`);
-                    // Check if file exists
-                    const { stat: fileStat } = await Promise.resolve().then(() => __importStar(require("fs/promises")));
-                    const fileExists = await fileStat(gifData.path).catch(() => null);
-                    if (fileExists) {
-                        // Read GIF file as buffer
-                        const gifBuffer = await (0, promises_1.readFile)(gifData.path);
-                        console.log(`[WelcomeHandler] Successfully read GIF: ${gifData.path} (${gifBuffer.length} bytes)`);
-                        const fileName = gifData.path.split("/").pop() || "welcome.gif";
-                        const attachment = new discord_js_1.AttachmentBuilder(gifBuffer, { name: fileName });
-                        await channel.send({
-                            content: greeting,
-                            files: [attachment],
-                            components: [row],
-                        });
-                        console.log(`✅ Posted greeting for ${user.tag} with GIF attachment`);
-                    }
-                    else {
-                        throw new Error("File not found");
-                    }
+                    const gifUrl = this.getGifHttpUrl(gifData.path);
+                    console.log(`[WelcomeHandler] Embedding GIF URL: ${gifUrl}`);
+                    const embed = new discord_js_1.EmbedBuilder()
+                        .setImage(gifUrl)
+                        .setColor(0x5865f2); // Discord blue
+                    await channel.send({
+                        content: greeting,
+                        embeds: [embed],
+                        components: [row],
+                    });
+                    console.log(`✅ Posted greeting for ${user.tag} with GIF embed`);
                 }
-                catch (fileErr) {
-                    console.error(`[WelcomeHandler] Could not read GIF file, sending without image:`, fileErr);
+                catch (err) {
+                    console.error("[WelcomeHandler] Error creating embed:", err);
+                    // Send without GIF if embed creation fails
                     await channel.send({
                         content: greeting,
                         components: [row],
                     });
-                    console.log(`✅ Posted greeting for ${user.tag} (no GIF available)`);
+                    console.log(`✅ Posted greeting for ${user.tag} (no GIF)`);
                 }
             }
             else {
@@ -139,7 +153,7 @@ class WelcomeHandler {
                     content: greeting,
                     components: [row],
                 });
-                console.log(`✅ Posted greeting for ${user.tag} (no GIF found)`);
+                console.log(`✅ Posted greeting for ${user.tag} (no GIF available)`);
             }
         }
         catch (err) {
@@ -153,40 +167,29 @@ class WelcomeHandler {
         try {
             await buttonInteraction.deferReply();
             const gifData = await this.gifManager.getRandomGif("welcome");
-            if (!gifData.sourceUrl && !gifData.path) {
+            if (!gifData.path) {
                 return buttonInteraction.editReply({
                     content: "No greeting GIFs available right now! 😔",
                 });
             }
             const newUser = await this.client.users.fetch(userId);
-            // Prefer source URL for embedding
-            if (gifData.sourceUrl) {
+            try {
+                const gifUrl = this.getGifHttpUrl(gifData.path);
                 const embed = new discord_js_1.EmbedBuilder()
-                    .setImage(gifData.sourceUrl)
+                    .setImage(gifUrl)
                     .setColor(0x5865f2); // Discord blue
                 await buttonInteraction.editReply({
                     content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
                     embeds: [embed],
                 });
+                console.log(`${buttonInteraction.user.tag} sent a welcome GIF to ${newUser.tag}`);
             }
-            else if (gifData.path) {
-                try {
-                    const gifBuffer = await (0, promises_1.readFile)(gifData.path);
-                    const fileName = gifData.path.split("/").pop() || "welcome.gif";
-                    const attachment = new discord_js_1.AttachmentBuilder(gifBuffer, { name: fileName });
-                    await buttonInteraction.editReply({
-                        content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
-                        files: [attachment],
-                    });
-                }
-                catch (fileErr) {
-                    console.error("Error reading GIF file:", fileErr);
-                    await buttonInteraction.editReply({
-                        content: `${buttonInteraction.user} tried to send a welcome GIF to ${newUser}! 🎁 (file error)`,
-                    });
-                }
+            catch (err) {
+                console.error("Error creating GIF embed:", err);
+                await buttonInteraction.editReply({
+                    content: `${buttonInteraction.user} tried to send a welcome GIF to ${newUser}! 🎁`,
+                });
             }
-            console.log(`${buttonInteraction.user.tag} sent a welcome GIF to ${newUser.tag}`);
         }
         catch (err) {
             console.error("Error handling welcome GIF button:", err);

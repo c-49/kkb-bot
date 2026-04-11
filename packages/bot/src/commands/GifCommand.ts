@@ -42,13 +42,19 @@ export class GifCommand implements ISlashCommand {
     .addSubcommand((sub) =>
       sub
         .setName("upload")
-        .setDescription("Upload a GIF to a category (use in DM) - Attach file after using command")
+        .setDescription("Upload a GIF from Tenor to a category (use in DM)")
         .addStringOption((opt) =>
           opt
             .setName("category")
             .setDescription("Category to upload to")
             .setRequired(true)
             .setAutocomplete(true)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("url")
+            .setDescription("Tenor GIF URL (e.g., https://tenor.com/view/...)")
+            .setRequired(true)
         )
     )
     .addSubcommand((sub) =>
@@ -167,98 +173,71 @@ export class GifCommand implements ISlashCommand {
     }
 
     const categoryName = interaction.options.getString("category");
+    const gifUrl = interaction.options.getString("url");
 
-    await interaction.reply({
-      content: `📁 Uploading GIF to **${categoryName}**\n\n⏰ Please send the image file (GIF, PNG, or JPG - max 10MB) in your next message.`,
-      ephemeral: false,
-    });
+    // Validate Tenor URL
+    if (!gifUrl.includes("tenor.com")) {
+      await interaction.reply({
+        content:
+          "❌ Invalid URL. Please use a Tenor GIF URL (e.g., https://tenor.com/view/...)",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Wait for user to send an image
-      const messages = await interaction.channel.awaitMessages({
-        filter: (msg: any) => msg.author.id === interaction.user.id && msg.attachments.size > 0,
-        max: 1,
-        time: 60000, // 60 seconds
-      });
+      // Extract GIF filename from URL
+      const urlObj = new URL(gifUrl);
+      const parts = urlObj.pathname.split("/");
+      const gifName = parts[parts.length - 1] || "tenor-gif";
 
-      if (messages.size === 0) {
-        await interaction.followUp({
-          content: "❌ Timeout - No file received. Please try again.",
-          ephemeral: true,
-        });
-        return;
+      console.log(`[GifCommand] Downloading GIF from Tenor: ${gifName}`);
+
+      // Download the GIF
+      const response = await fetch(gifUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download GIF: ${response.status} ${response.statusText}`);
       }
 
-      const message = messages.first();
-      const attachment = message.attachments.first();
-
-      if (!attachment) {
-        await interaction.followUp({
-          content: "❌ No attachment found in message.",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      // Validate file type
-      const validTypes = [
-        "image/gif",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-      ];
-      
-      // Check by extension if contentType is missing
-      const fileExtension = attachment.name?.split('.').pop()?.toLowerCase();
-      const validExtensions = ['gif', 'png', 'jpg', 'jpeg'];
-      const hasValidExtension = fileExtension && validExtensions.includes(fileExtension);
-      const hasValidType = attachment.contentType && validTypes.includes(attachment.contentType);
-      
-      if (!hasValidExtension && !hasValidType) {
-        await interaction.followUp({
-          content: `❌ Invalid file type. Only GIF, PNG, and JPG allowed. Received: ${attachment.name}`,
-          ephemeral: true,
-        });
-        return;
-      }
+      const buffer = await response.arrayBuffer();
 
       // Validate file size (10MB)
-      if (attachment.size > 10 * 1024 * 1024) {
-        await interaction.followUp({
-          content: `❌ File too large. Max 10MB, received ${(attachment.size / 1024 / 1024).toFixed(2)}MB`,
-          ephemeral: true,
+      if (buffer.byteLength > 10 * 1024 * 1024) {
+        await interaction.editReply({
+          content: `❌ File too large. Max 10MB, received ${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB`,
         });
         return;
       }
 
-      // Download and process file
-      const response = await fetch(attachment.url);
-      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength === 0) {
+        await interaction.editReply({
+          content: "❌ Downloaded file is empty. Please try again with a different GIF.",
+        });
+        return;
+      }
+
+      console.log(
+        `[GifCommand] Downloaded ${buffer.byteLength} bytes, uploading to category: ${categoryName}`
+      );
 
       // Upload to GIF manager
       const uploadedGif = await this.gifManager.uploadGif(
         categoryName,
         Buffer.from(buffer),
-        attachment.name || "unnamed",
+        gifName.endsWith(".gif") ? gifName : `${gifName}.gif`,
         interaction.user.id
       );
 
-      await interaction.followUp({
-        content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB`,
-        ephemeral: true,
+      await interaction.editReply({
+        content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB\n🔗 [Original URL](${gifUrl})`,
       });
-
-      // Delete the user's file message to keep chat clean
-      try {
-        await message.delete();
-      } catch (_: any) {
-        // Ignore delete errors
-      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Upload failed";
-      await interaction.followUp({
+      console.error("[GifCommand] Upload error:", error);
+      await interaction.editReply({
         content: `❌ Error: ${errorMsg}`,
-        ephemeral: true,
       });
     }
   }

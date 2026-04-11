@@ -5,3 +5,4 @@ node_modules/
 .env.local
 bot-config.json
 uploads/
+gifs/resized/

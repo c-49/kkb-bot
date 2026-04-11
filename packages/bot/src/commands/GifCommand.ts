@@ -385,27 +385,18 @@ export class GifCommand implements ISlashCommand {
       await execAsync(`git -C "${root}" push`);
 
       await interaction.editReply({
-        content: `✅ Committed and pushed **${fileCount}** GIF file(s). Resizing...`,
-      });
-
-      const { resized, failed } = await this.gifManager.preResizeAll();
-      const resizeNote = failed > 0
-        ? `Resized **${resized}** GIF(s) (${failed} failed).`
-        : `Resized **${resized}** new GIF(s).`;
-
-      await interaction.editReply({
-        content: `✅ Committed **${fileCount}** file(s). ${resizeNote} Building...`,
+        content: `✅ Committed and pushed **${fileCount}** GIF file(s). Building...`,
       });
 
       try {
         await execAsync("npm run build", { cwd: root, maxBuffer: 10 * 1024 * 1024 });
         await interaction.editReply({
-          content: `✅ Committed **${fileCount}** file(s). ${resizeNote} Build complete.`,
+          content: `✅ Committed **${fileCount}** GIF file(s) and rebuilt successfully.`,
         });
       } catch (buildError) {
         const msg = buildError instanceof Error ? buildError.message : String(buildError);
         await interaction.editReply({
-          content: `✅ Committed **${fileCount}** file(s). ${resizeNote} Build failed:\n\`\`\`\n${msg.slice(0, 600)}\n\`\`\``,
+          content: `✅ Committed **${fileCount}** GIF file(s), but the build failed:\n\`\`\`\n${msg.slice(0, 600)}\n\`\`\``,
         });
       }
     } catch (error) {

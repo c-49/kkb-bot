@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "node --loader tsx/esm src/bot.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/preresize-gifs.js",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit"
   },

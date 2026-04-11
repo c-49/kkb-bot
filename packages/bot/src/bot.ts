@@ -1,4 +1,4 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 // @ts-ignore - express types not yet installed
 import express from "express";
 import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
@@ -7,6 +7,9 @@ import { SlashCommandRegistry } from "./commands/SlashCommandRegistry.js";
 import { PingCommand, HelloCommand } from "./commands/examples.js";
 import { WelcomeSlashCommand, WelcomeSetupSlashCommand } from "./commands/Welcome.js";
 import { GifCommand } from "./commands/GifCommand.js";
+
+// Load environment variables
+dotenv.config();
 import { SettingsManager } from "./storage/SettingsManager.js";
 import { WelcomeManager } from "./storage/WelcomeManager.js";
 import { GifManager } from "./storage/GifManager.js";

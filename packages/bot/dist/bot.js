@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-require("dotenv/config");
+const dotenv_1 = __importDefault(require("dotenv"));
 // @ts-ignore - express types not yet installed
 const express_1 = __importDefault(require("express"));
 const discord_js_1 = require("discord.js");
@@ -12,6 +12,8 @@ const SlashCommandRegistry_js_1 = require("./commands/SlashCommandRegistry.js");
 const examples_js_1 = require("./commands/examples.js");
 const Welcome_js_1 = require("./commands/Welcome.js");
 const GifCommand_js_1 = require("./commands/GifCommand.js");
+// Load environment variables
+dotenv_1.default.config();
 const SettingsManager_js_1 = require("./storage/SettingsManager.js");
 const WelcomeManager_js_1 = require("./storage/WelcomeManager.js");
 const GifManager_js_1 = require("./storage/GifManager.js");

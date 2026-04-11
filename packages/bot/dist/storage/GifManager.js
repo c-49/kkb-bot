@@ -114,16 +114,18 @@ class GifManager {
     async createCategory(name, description, createdBy) {
         try {
             const id = (0, crypto_1.randomUUID)();
+            const normalizedName = name.toLowerCase();
             const connection = await this.pool.getConnection();
             try {
+                console.log(`[GifManager] Creating category: ${name} (normalized: ${normalizedName})`);
                 await connection.query(`INSERT INTO gif_categories (id, name, description, created_by)
-           VALUES (?, ?, ?, ?)`, [id, name.toLowerCase(), description || null, createdBy || null]);
-                console.log(`✅ Created GIF category: ${name}`);
+           VALUES (?, ?, ?, ?)`, [id, normalizedName, description || null, createdBy || null]);
+                console.log(`✅ Created GIF category: ${normalizedName} (ID: ${id})`);
                 // Create folder for category
-                await this.ensureDirectory(path_1.default.join(this.giftFolderPath, name.toLowerCase()));
+                await this.ensureDirectory(path_1.default.join(this.giftFolderPath, normalizedName));
                 return {
                     id,
-                    name: name.toLowerCase(),
+                    name: normalizedName,
                     description,
                 };
             }
@@ -174,6 +176,7 @@ class GifManager {
         try {
             const connection = await this.pool.getConnection();
             try {
+                console.log("[GifManager] Querying all categories...");
                 const [rows] = await connection.query(`
           SELECT 
             c.id, 
@@ -185,12 +188,14 @@ class GifManager {
           GROUP BY c.id, c.name, c.description
           ORDER BY c.name ASC
         `);
-                return (Array.isArray(rows) ? rows : []).map((row) => ({
+                const result = (Array.isArray(rows) ? rows : []).map((row) => ({
                     id: row.id,
                     name: row.name,
                     description: row.description,
                     gifCount: parseInt(row.gif_count, 10),
                 }));
+                console.log(`[GifManager] Found ${result.length} categories:`, result.map(c => `${c.name} (${c.gifCount} GIFs)`));
+                return result;
             }
             finally {
                 connection.release();

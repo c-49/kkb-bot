@@ -110,14 +110,18 @@ bot.on("ready", async () => {
     console.log("💾 GIF database initialized");
     
     // Ensure "welcome" category exists
+    console.log("🔍 Checking for 'welcome' category...");
     const welcomeCategory = await gifManager.getCategoryByName("welcome");
     if (!welcomeCategory) {
+      console.log("📁 Welcome category not found, creating...");
       await gifManager.createCategory(
         "welcome",
         "GIFs used for welcoming new members",
         "system"
       );
-      console.log("📁 Created 'welcome' GIF category");
+      console.log("✅ Created 'welcome' GIF category");
+    } else {
+      console.log(`✅ Welcome category already exists`);
     }
   } catch (error) {
     console.error("Failed to initialize GIF database:", error);
@@ -296,10 +300,15 @@ bot.on("interactionCreate", async (interaction) => {
       
       if (focusedValue.name === "category") {
         try {
+          console.log(`[Autocomplete] Fetching categories for gif command, user input: "${focusedValue.value}"`);
           const categories = await gifManager.listCategories();
+          console.log(`[Autocomplete] Retrieved ${categories.length} total categories:`, categories.map(c => c.name));
+          
           const filtered = categories
             .filter(cat => cat.name.toLowerCase().includes(focusedValue.value.toLowerCase()))
             .slice(0, 25); // Discord limit
+          
+          console.log(`[Autocomplete] After filtering: ${filtered.length} categories match`);
           
           await interaction.respond(
             filtered.map(cat => ({
@@ -308,7 +317,8 @@ bot.on("interactionCreate", async (interaction) => {
             }))
           );
         } catch (err) {
-          console.error("Autocomplete error:", err);
+          console.error("❌ Autocomplete error:", err);
+          console.error("Stack:", (err as any).stack);
           await interaction.respond([]);
         }
       }

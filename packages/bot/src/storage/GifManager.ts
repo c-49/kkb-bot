@@ -100,22 +100,24 @@ export class GifManager {
   ): Promise<{ id: string; name: string; description?: string }> {
     try {
       const id = randomUUID();
+      const normalizedName = name.toLowerCase();
       const connection = await this.pool.getConnection();
       try {
+        console.log(`[GifManager] Creating category: ${name} (normalized: ${normalizedName})`);
         await connection.query(
           `INSERT INTO gif_categories (id, name, description, created_by)
            VALUES (?, ?, ?, ?)`,
-          [id, name.toLowerCase(), description || null, createdBy || null]
+          [id, normalizedName, description || null, createdBy || null]
         );
 
-        console.log(`✅ Created GIF category: ${name}`);
+        console.log(`✅ Created GIF category: ${normalizedName} (ID: ${id})`);
 
         // Create folder for category
-        await this.ensureDirectory(path.join(this.giftFolderPath, name.toLowerCase()));
+        await this.ensureDirectory(path.join(this.giftFolderPath, normalizedName));
 
         return {
           id,
-          name: name.toLowerCase(),
+          name: normalizedName,
           description,
         };
       } finally {
@@ -169,6 +171,7 @@ export class GifManager {
     try {
       const connection = await this.pool.getConnection();
       try {
+        console.log("[GifManager] Querying all categories...");
         const [rows] = await connection.query(`
           SELECT 
             c.id, 
@@ -181,12 +184,16 @@ export class GifManager {
           ORDER BY c.name ASC
         `);
 
-        return (Array.isArray(rows) ? rows : []).map((row: any) => ({
+        const result = (Array.isArray(rows) ? rows : []).map((row: any) => ({
           id: row.id,
           name: row.name,
           description: row.description,
           gifCount: parseInt(row.gif_count, 10),
         }));
+        
+        console.log(`[GifManager] Found ${result.length} categories:`, result.map(c => `${c.name} (${c.gifCount} GIFs)`));
+        
+        return result;
       } finally {
         connection.release();
       }

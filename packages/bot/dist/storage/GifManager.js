@@ -387,6 +387,35 @@ class GifManager {
         return this.getResizedGif(id, filePath, this.displayWidth, this.displayHeight);
     }
     /**
+     * Pre-resize all GIFs in the database and populate the cache.
+     * Already-cached GIFs are skipped automatically.
+     */
+    async preResizeAll() {
+        const gifs = await this.listGifs();
+        let resized = 0;
+        let failed = 0;
+        for (const gif of gifs) {
+            const cacheDir = path_1.default.join(this.resizeCachePath, `${this.displayWidth}x${this.displayHeight}`);
+            const cachedPath = path_1.default.join(cacheDir, `${gif.id}.gif`);
+            // Skip if already cached
+            try {
+                await promises_1.default.access(cachedPath);
+                continue;
+            }
+            catch {
+                // Not cached — resize it
+            }
+            try {
+                await this.resizeForDisplay(gif.id, gif.path);
+                resized++;
+            }
+            catch {
+                failed++;
+            }
+        }
+        return { resized, failed };
+    }
+    /**
      * Get resized GIF, creating cache if needed
      */
     async getResizedGif(id, originalPath, width, height) {

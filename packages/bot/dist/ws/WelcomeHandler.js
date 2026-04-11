@@ -26,30 +26,9 @@ class WelcomeHandler {
             writable: true,
             value: void 0
         });
-        Object.defineProperty(this, "httpBaseUrl", {
-            enumerable: true,
-            configurable: true,
-            writable: true,
-            value: void 0
-        });
         this.client = client;
         this.welcomeManager = welcomeManager;
         this.gifManager = gifManager;
-        // Build base URL from environment or use localhost
-        const httpPort = process.env.HTTP_PORT || 3000;
-        const httpHost = process.env.HTTP_HOST || "localhost";
-        this.httpBaseUrl = `http://${httpHost}:${httpPort}`;
-    }
-    /**
-     * Convert file path to HTTP URL
-     */
-    getGifHttpUrl(filePath) {
-        // Extract category and filename from path
-        // Path format: ./gifs/category/filename.gif
-        const parts = filePath.split(/[\/\\]/);
-        const category = parts[parts.length - 2];
-        const filename = parts[parts.length - 1];
-        return `${this.httpBaseUrl}/gifs/${category}/${filename}`;
     }
     /**
      * Post a greeting when a new user joins
@@ -126,9 +105,11 @@ class WelcomeHandler {
             }
             const newUser = await this.client.users.fetch(userId);
             try {
-                const gifUrl = this.getGifHttpUrl(gifData.path);
+                if (!gifData.sourceUrl) {
+                    throw new Error("No source URL for GIF");
+                }
                 const embed = new discord_js_1.EmbedBuilder()
-                    .setImage(gifUrl)
+                    .setImage(gifData.sourceUrl)
                     .setColor(0x5865f2); // Discord blue
                 await buttonInteraction.editReply({
                     content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
@@ -139,7 +120,7 @@ class WelcomeHandler {
             catch (err) {
                 console.error("Error creating GIF embed:", err);
                 await buttonInteraction.editReply({
-                    content: `${buttonInteraction.user} tried to send a welcome GIF to ${newUser}! 🎁`,
+                    content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
                 });
             }
         }

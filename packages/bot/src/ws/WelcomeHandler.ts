@@ -11,28 +11,11 @@ export class WelcomeHandler {
   private welcomeManager: WelcomeManager;
   private gifManager: GifManager;
   private client: Client;
-  private httpBaseUrl: string;
 
   constructor(client: Client, welcomeManager: WelcomeManager, gifManager: GifManager) {
     this.client = client;
     this.welcomeManager = welcomeManager;
     this.gifManager = gifManager;
-    // Build base URL from environment or use localhost
-    const httpPort = process.env.HTTP_PORT || 3000;
-    const httpHost = process.env.HTTP_HOST || "localhost";
-    this.httpBaseUrl = `http://${httpHost}:${httpPort}`;
-  }
-
-  /**
-   * Convert file path to HTTP URL
-   */
-  private getGifHttpUrl(filePath: string): string {
-    // Extract category and filename from path
-    // Path format: ./gifs/category/filename.gif
-    const parts = filePath.split(/[\/\\]/);
-    const category = parts[parts.length - 2];
-    const filename = parts[parts.length - 1];
-    return `${this.httpBaseUrl}/gifs/${category}/${filename}`;
   }
 
   /**
@@ -121,9 +104,12 @@ export class WelcomeHandler {
       const newUser = await this.client.users.fetch(userId);
 
       try {
-        const gifUrl = this.getGifHttpUrl(gifData.path);
+        if (!gifData.sourceUrl) {
+          throw new Error("No source URL for GIF");
+        }
+
         const embed = new EmbedBuilder()
-          .setImage(gifUrl)
+          .setImage(gifData.sourceUrl)
           .setColor(0x5865f2); // Discord blue
 
         await buttonInteraction.editReply({
@@ -135,7 +121,7 @@ export class WelcomeHandler {
       } catch (err) {
         console.error("Error creating GIF embed:", err);
         await buttonInteraction.editReply({
-          content: `${buttonInteraction.user} tried to send a welcome GIF to ${newUser}! 🎁`,
+          content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
         });
       }
     } catch (err) {

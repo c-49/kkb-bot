@@ -258,20 +258,7 @@ export class GifCommand implements ISlashCommand {
       return;
     }
 
-    // Get config-defined width/height for GIFs
-    let width = 256;
-    let height = 256;
-    try {
-      const config = await import("../../config.json", { assert: { type: "json" } });
-      if (config?.default?.gif) {
-        width = config.default.gif.width || width;
-        height = config.default.gif.height || height;
-      }
-    } catch (e) {
-      // fallback to defaults
-    }
-
-    // Get random GIFs (resized)
+    // Get GIFs in the category
     const gifs = await this.gifManager.listGifs(categoryName);
     if (gifs.length === 0) {
       await interaction.editReply({
@@ -284,46 +271,38 @@ export class GifCommand implements ISlashCommand {
     const shuffled = gifs.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(count, gifs.length));
 
-    // For each selected GIF, get resized path
-    const resizedGifData = await Promise.all(
-      selected.map(async (gif) => {
-        const resizedPath = await this.gifManager["getResizedGif"](gif.id, gif.path, width, height);
-        return { ...gif, resizedPath };
-      })
-    );
+    // For each selected GIF, get its sourceUrl (original link)
+    // Need to fetch source_url from DB for each GIF
+    const connection = await this.gifManager["pool"].getConnection();
+    try {
+      const embeds = [];
+      for (const gif of selected) {
+        const [rows] = await connection.query(
+          `SELECT source_url FROM gifs WHERE id = ?`,
+          [gif.id]
+        );
+        const sourceUrl = Array.isArray(rows) && rows.length > 0 ? rows[0].source_url : null;
+        if (sourceUrl) {
+          embeds.push({
+            title: gif.name,
+            image: { url: sourceUrl },
+            color: 0x5865f2,
+          });
+        }
+      }
 
-    // Build HTTP base URL
-    const httpPort = process.env.HTTP_PORT || 3000;
-    const httpHost = process.env.HTTP_HOST || "localhost";
-    const httpBaseUrl = `http://${httpHost}:${httpPort}`;
+      const content =
+        embeds.length === 1
+          ? `🎬 From **${categoryName}**:`
+          : `🎬 ${embeds.length} GIFs from **${categoryName}**:`;
 
-    // Helper to get HTTP URL for a GIF
-    function getGifHttpUrl(filePath: string): string {
-      const parts = filePath.split(/[\/\\]/);
-      const category = parts[parts.length - 2];
-      const filename = parts[parts.length - 1];
-      return `${httpBaseUrl}/gifs/${category}/${filename}`;
+      await interaction.editReply({
+        content,
+        embeds,
+      });
+    } finally {
+      connection.release();
     }
-
-    // Send GIFs as embeds (using resized paths)
-    const embeds = resizedGifData.map((gif) => {
-      const url = getGifHttpUrl(gif.resizedPath);
-      return {
-        title: gif.name,
-        image: { url },
-        color: 0x5865f2,
-      };
-    });
-
-    const content =
-      selected.length === 1
-        ? `🎬 From **${categoryName}**:`
-        : `🎬 ${selected.length} GIFs from **${categoryName}**:`;
-
-    await interaction.editReply({
-      content,
-      embeds,
-    });
   }
 
   private async handleList(interaction: any): Promise<void> {

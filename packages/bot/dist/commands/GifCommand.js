@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GifCommand = void 0;
 const discord_js_1 = require("discord.js");
@@ -238,20 +205,7 @@ class GifCommand {
             });
             return;
         }
-        // Get config-defined width/height for GIFs
-        let width = 256;
-        let height = 256;
-        try {
-            const config = await Promise.resolve().then(() => __importStar(require("../../config.json")));
-            if (config?.default?.gif) {
-                width = config.default.gif.width || width;
-                height = config.default.gif.height || height;
-            }
-        }
-        catch (e) {
-            // fallback to defaults
-        }
-        // Get random GIFs (resized)
+        // Get GIFs in the category
         const gifs = await this.gifManager.listGifs(categoryName);
         if (gifs.length === 0) {
             await interaction.editReply({
@@ -262,38 +216,33 @@ class GifCommand {
         // Shuffle and pick up to 'count' GIFs
         const shuffled = gifs.sort(() => Math.random() - 0.5);
         const selected = shuffled.slice(0, Math.min(count, gifs.length));
-        // For each selected GIF, get resized path
-        const resizedGifData = await Promise.all(selected.map(async (gif) => {
-            const resizedPath = await this.gifManager["getResizedGif"](gif.id, gif.path, width, height);
-            return { ...gif, resizedPath };
-        }));
-        // Build HTTP base URL
-        const httpPort = process.env.HTTP_PORT || 3000;
-        const httpHost = process.env.HTTP_HOST || "localhost";
-        const httpBaseUrl = `http://${httpHost}:${httpPort}`;
-        // Helper to get HTTP URL for a GIF
-        function getGifHttpUrl(filePath) {
-            const parts = filePath.split(/[\/\\]/);
-            const category = parts[parts.length - 2];
-            const filename = parts[parts.length - 1];
-            return `${httpBaseUrl}/gifs/${category}/${filename}`;
+        // For each selected GIF, get its sourceUrl (original link)
+        // Need to fetch source_url from DB for each GIF
+        const connection = await this.gifManager["pool"].getConnection();
+        try {
+            const embeds = [];
+            for (const gif of selected) {
+                const [rows] = await connection.query(`SELECT source_url FROM gifs WHERE id = ?`, [gif.id]);
+                const sourceUrl = Array.isArray(rows) && rows.length > 0 ? rows[0].source_url : null;
+                if (sourceUrl) {
+                    embeds.push({
+                        title: gif.name,
+                        image: { url: sourceUrl },
+                        color: 0x5865f2,
+                    });
+                }
+            }
+            const content = embeds.length === 1
+                ? `🎬 From **${categoryName}**:`
+                : `🎬 ${embeds.length} GIFs from **${categoryName}**:`;
+            await interaction.editReply({
+                content,
+                embeds,
+            });
         }
-        // Send GIFs as embeds (using resized paths)
-        const embeds = resizedGifData.map((gif) => {
-            const url = getGifHttpUrl(gif.resizedPath);
-            return {
-                title: gif.name,
-                image: { url },
-                color: 0x5865f2,
-            };
-        });
-        const content = selected.length === 1
-            ? `🎬 From **${categoryName}**:`
-            : `🎬 ${selected.length} GIFs from **${categoryName}**:`;
-        await interaction.editReply({
-            content,
-            embeds,
-        });
+        finally {
+            connection.release();
+        }
     }
     async handleList(interaction) {
         const categoryName = interaction.options.getString("category");

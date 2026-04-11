@@ -57,21 +57,8 @@ export class WelcomeHandler {
       const user = await this.client.users.fetch(userId);
       const greeting = settings.greetingMessage.replace("{newUser}", `<@${userId}>`);
 
-      // Get config-defined width/height for GIFs
-      let width = 256;
-      let height = 256;
-      try {
-        const config = await import("../../config.json", { assert: { type: "json" } });
-        if (config?.default?.gif) {
-          width = config.default.gif.width || width;
-          height = config.default.gif.height || height;
-        }
-      } catch (e) {
-        // fallback to defaults
-      }
-
-      // Get a random resized GIF from "welcome" category
-      const gifData = await this.gifManager.getRandomGif("welcome", width, height);
+      // Get a random GIF from "welcome" category (use source_url)
+      const gifData = await this.gifManager.getRandomGif("welcome");
 
       // Create button for others to send greeting GIFs
       const giftButton = new ButtonBuilder()
@@ -82,13 +69,10 @@ export class WelcomeHandler {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(giftButton);
 
       // Send greeting with embed for GIF if available
-      if (gifData.path) {
+      if (gifData.sourceUrl) {
         try {
-          const gifUrl = this.getGifHttpUrl(gifData.path);
-          console.log(`[WelcomeHandler] Embedding GIF URL: ${gifUrl}`);
-          
           const embed = new EmbedBuilder()
-            .setImage(gifUrl)
+            .setImage(gifData.sourceUrl)
             .setColor(0x5865f2); // Discord blue
 
           await channel.send({

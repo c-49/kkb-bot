@@ -3,39 +3,6 @@
  * Welcome system handler
  * Manages greeting posts and GIF button responses
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WelcomeHandler = void 0;
 const discord_js_1 = require("discord.js");
@@ -101,21 +68,8 @@ class WelcomeHandler {
             }
             const user = await this.client.users.fetch(userId);
             const greeting = settings.greetingMessage.replace("{newUser}", `<@${userId}>`);
-            // Get config-defined width/height for GIFs
-            let width = 256;
-            let height = 256;
-            try {
-                const config = await Promise.resolve().then(() => __importStar(require("../../config.json")));
-                if (config?.default?.gif) {
-                    width = config.default.gif.width || width;
-                    height = config.default.gif.height || height;
-                }
-            }
-            catch (e) {
-                // fallback to defaults
-            }
-            // Get a random resized GIF from "welcome" category
-            const gifData = await this.gifManager.getRandomGif("welcome", width, height);
+            // Get a random GIF from "welcome" category (use source_url)
+            const gifData = await this.gifManager.getRandomGif("welcome");
             // Create button for others to send greeting GIFs
             const giftButton = new discord_js_1.ButtonBuilder()
                 .setCustomId(`welcome_gif_${userId}`)
@@ -123,12 +77,10 @@ class WelcomeHandler {
                 .setStyle(discord_js_1.ButtonStyle.Primary);
             const row = new discord_js_1.ActionRowBuilder().addComponents(giftButton);
             // Send greeting with embed for GIF if available
-            if (gifData.path) {
+            if (gifData.sourceUrl) {
                 try {
-                    const gifUrl = this.getGifHttpUrl(gifData.path);
-                    console.log(`[WelcomeHandler] Embedding GIF URL: ${gifUrl}`);
                     const embed = new discord_js_1.EmbedBuilder()
-                        .setImage(gifUrl)
+                        .setImage(gifData.sourceUrl)
                         .setColor(0x5865f2); // Discord blue
                     await channel.send({
                         content: greeting,

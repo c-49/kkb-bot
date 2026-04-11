@@ -42,13 +42,19 @@ export class GifCommand implements ISlashCommand {
     .addSubcommand((sub) =>
       sub
         .setName("upload")
-        .setDescription("Upload a GIF to a category (Admin/Mod only, use in DM)")
+        .setDescription("Upload a GIF to a category (use in DM)")
         .addStringOption((opt) =>
           opt
             .setName("category")
             .setDescription("Category to upload to")
             .setRequired(true)
             .setAutocomplete(true)
+        )
+        .addAttachmentOption((opt) =>
+          opt
+            .setName("file")
+            .setDescription("GIF, PNG, or JPG file (max 10MB)")
+            .setRequired(true)
         )
     )
     .addSubcommand((sub) =>
@@ -166,55 +172,44 @@ export class GifCommand implements ISlashCommand {
       return;
     }
 
-    // In DMs, allow any user (they've already authorized the bot)
-    // If we wanted to restrict to admins/mods, they should use the command in the guild first
-
     const categoryName = interaction.options.getString("category");
+    const attachment = interaction.options.getAttachment("file");
 
-    await interaction.reply({
-      content: `📤 Ready to upload to **${categoryName}**!\n\nPlease upload your GIF file below (GIF, PNG, or JPG - max 10MB).\n\n_You have 5 minutes to upload._`,
-      ephemeral: true,
-    });
+    if (!attachment) {
+      await interaction.reply({
+        content: "❌ No file provided.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Validate file type
+    const validTypes = [
+      "image/gif",
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+    ];
+    if (!validTypes.includes(attachment.contentType || "")) {
+      await interaction.reply({
+        content: `❌ Invalid file type. Only GIF, PNG, and JPG allowed. Received: ${attachment.contentType}`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (attachment.size > 10 * 1024 * 1024) {
+      await interaction.reply({
+        content: `❌ File too large. Max 10MB, received ${(attachment.size / 1024 / 1024).toFixed(2)}MB`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Wait for a file upload in the next message (5 min timeout)
-      const collected = await interaction.channel.awaitMessages({
-        filter: (msg: any) => msg.author.id === interaction.user.id && msg.attachments.size > 0,
-        max: 1,
-        time: 5 * 60 * 1000, // 5 minutes
-      });
-
-      if (collected.size === 0) {
-        await interaction.editReply({
-          content: "⏱️ Upload cancelled - no file received within 5 minutes.",
-        });
-        return;
-      }
-
-      const uploadMsg = collected.first();
-      const attachment = uploadMsg.attachments.first();
-
-      if (!attachment) {
-        await interaction.editReply({
-          content: "❌ No file attachment found.",
-        });
-        return;
-      }
-
-      // Validate file type
-      const validTypes = [
-        "image/gif",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-      ];
-      if (!validTypes.includes(attachment.contentType || "")) {
-        await interaction.editReply({
-          content: `❌ Invalid file type. Only GIF, PNG, and JPG allowed. Received: ${attachment.contentType}`,
-        });
-        return;
-      }
-
       // Download attachment
       const response = await fetch(attachment.url);
       const buffer = await response.arrayBuffer();
@@ -230,13 +225,6 @@ export class GifCommand implements ISlashCommand {
       await interaction.editReply({
         content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB`,
       });
-
-      // Delete the user's message with the file
-      try {
-        await uploadMsg.delete();
-      } catch {
-        // Best effort deletion
-      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Upload failed";
       await interaction.editReply({

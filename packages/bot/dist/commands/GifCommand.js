@@ -248,29 +248,22 @@ class GifCommand {
         }
         const shuffled = gifs.sort(() => Math.random() - 0.5);
         const selected = shuffled.slice(0, Math.min(count, gifs.length));
-        // Resize each GIF to max 480×480 and send as file attachments so Discord
-        // shows them at a controlled size instead of full Tenor dimensions.
-        const files = [];
-        for (const gif of selected) {
-            try {
-                const resizedPath = await this.gifManager.resizeForDisplay(gif.id, gif.path);
-                const buffer = await promises_1.default.readFile(resizedPath);
-                files.push(new discord_js_1.AttachmentBuilder(buffer, { name: `${gif.id}.gif` }));
-            }
-            catch (error) {
-                console.error(`[GifCommand] Failed to prepare GIF ${gif.id}:`, error);
-            }
-        }
-        if (files.length === 0) {
+        const embeds = selected
+            .filter((gif) => gif.sourceUrl)
+            .map((gif) => ({
+            image: { url: gif.sourceUrl },
+            color: 0x5865f2,
+        }));
+        if (embeds.length === 0) {
             await interaction.editReply({
-                content: `❌ Failed to load GIFs from **${categoryName}**.`,
+                content: `❌ No GIFs in **${categoryName}** have a source URL.`,
             });
             return;
         }
-        const content = files.length === 1
+        const content = embeds.length === 1
             ? `🎬 From **${categoryName}**:`
-            : `🎬 ${files.length} GIFs from **${categoryName}**:`;
-        await interaction.editReply({ content, files });
+            : `🎬 ${embeds.length} GIFs from **${categoryName}**:`;
+        await interaction.editReply({ content, embeds });
     }
     async handleCommit(interaction) {
         if (!interaction.member?.permissions?.has("Administrator")) {

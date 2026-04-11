@@ -1,7 +1,4 @@
-import {
-  SlashCommandBuilder,
-  AttachmentBuilder,
-} from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { ISlashCommand, SlashCommandContext } from "@kkb/shared";
 import { GifManager } from "../storage/GifManager.js";
 import fs from "fs/promises";
@@ -308,32 +305,26 @@ export class GifCommand implements ISlashCommand {
     const shuffled = gifs.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(count, gifs.length));
 
-    // Resize each GIF to max 480×480 and send as file attachments so Discord
-    // shows them at a controlled size instead of full Tenor dimensions.
-    const files: AttachmentBuilder[] = [];
-    for (const gif of selected) {
-      try {
-        const resizedPath = await this.gifManager.resizeForDisplay(gif.id, gif.path);
-        const buffer = await fs.readFile(resizedPath);
-        files.push(new AttachmentBuilder(buffer, { name: `${gif.id}.gif` }));
-      } catch (error) {
-        console.error(`[GifCommand] Failed to prepare GIF ${gif.id}:`, error);
-      }
-    }
+    const embeds = selected
+      .filter((gif) => gif.sourceUrl)
+      .map((gif) => ({
+        image: { url: gif.sourceUrl! },
+        color: 0x5865f2,
+      }));
 
-    if (files.length === 0) {
+    if (embeds.length === 0) {
       await interaction.editReply({
-        content: `❌ Failed to load GIFs from **${categoryName}**.`,
+        content: `❌ No GIFs in **${categoryName}** have a source URL.`,
       });
       return;
     }
 
     const content =
-      files.length === 1
+      embeds.length === 1
         ? `🎬 From **${categoryName}**:`
-        : `🎬 ${files.length} GIFs from **${categoryName}**:`;
+        : `🎬 ${embeds.length} GIFs from **${categoryName}**:`;
 
-    await interaction.editReply({ content, files });
+    await interaction.editReply({ content, embeds });
   }
 
   private async handleCommit(interaction: any): Promise<void> {

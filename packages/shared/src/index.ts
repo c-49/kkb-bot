@@ -116,6 +116,7 @@ export interface ImageMeta {
   path: string;
   uploadedAt: number;
   size: number;  // bytes
+  sourceUrl?: string;
 }
 
 /**

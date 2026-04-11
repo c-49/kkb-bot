@@ -97,6 +97,17 @@ export class GifManager {
           }
         }
 
+        // Add blob_data column if it doesn't exist (MEDIUMBLOB supports up to 16MB)
+        try {
+          await connection.query(`
+            ALTER TABLE gifs ADD COLUMN blob_data MEDIUMBLOB AFTER source_url
+          `);
+        } catch (err: any) {
+          if (!err.message?.includes("Duplicate column")) {
+            console.warn("Could not add blob_data column:", err.message);
+          }
+        }
+
         console.log("✅ GIF database schema initialized");
       } finally {
         connection.release();
@@ -295,11 +306,11 @@ export class GifManager {
         // Write file
         await fs.writeFile(filePath, fileBuffer);
 
-        // Store in database
+        // Store in database (blob_data holds the raw file for future use)
         await connection.query(
-          `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]
+          `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description, blob_data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF", fileBuffer]
         );
 
         console.log(`✅ GIF uploaded to "${category}": ${fileName}`);
@@ -328,7 +339,7 @@ export class GifManager {
     try {
       const connection = await this.pool.getConnection();
       try {
-        let query = `SELECT id, name, file_path, size, uploaded_at FROM gifs`;
+        let query = `SELECT id, name, file_path, size, uploaded_at, source_url FROM gifs`;
         const params: any[] = [];
 
         if (category) {
@@ -348,6 +359,7 @@ export class GifManager {
           path: row.file_path,
           uploadedAt: row.uploaded_at,
           size: row.size,
+          sourceUrl: row.source_url ?? undefined,
         }));
       } finally {
         connection.release();
@@ -400,14 +412,6 @@ export class GifManager {
       console.error("Failed to get random GIF:", error);
       return { path: null, sourceUrl: null };
     }
-  }
-
-  /**
-   * Resize a GIF for Discord display using the dimensions from config.json.
-   * Returns the path to the resized GIF, or the original path if resizing fails.
-   */
-  async resizeForDisplay(id: string, filePath: string): Promise<string> {
-    return this.getResizedGif(id, filePath, this.displayWidth, this.displayHeight);
   }
 
   /**

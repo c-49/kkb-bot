@@ -209,13 +209,39 @@ export class GifCommand implements ISlashCommand {
 
       console.log(`[GifCommand] Downloading GIF from Tenor: ${gifName}`);
 
-      // Download the GIF
-      const response = await fetch(gifUrl);
+      // Download the URL — may be a Tenor page or a direct media file
+      const response = await fetch(gifUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
       if (!response.ok) {
-        throw new Error(`Failed to download GIF: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
       }
 
-      const buffer = await response.arrayBuffer();
+      const contentType = response.headers.get("content-type") ?? "";
+      let buffer: ArrayBuffer;
+
+      if (contentType.includes("text/html")) {
+        // It's a Tenor page URL — extract the direct GIF URL from the og:image meta tag
+        const html = await response.text();
+        const match =
+          html.match(/property="og:image"\s+content="(https:\/\/[^"]+\.gif[^"]*)"/) ||
+          html.match(/content="(https:\/\/[^"]+\.gif[^"]*)"\s+property="og:image"/);
+
+        if (!match?.[1]) {
+          throw new Error(
+            "Could not extract a direct GIF URL from that Tenor page.\n" +
+            "Right-click the GIF on Tenor → **Copy image address** and paste that URL instead."
+          );
+        }
+
+        console.log(`[GifCommand] Resolved Tenor page to direct URL: ${match[1]}`);
+        const mediaResponse = await fetch(match[1]);
+        if (!mediaResponse.ok) {
+          throw new Error(`Failed to download GIF media: ${mediaResponse.status}`);
+        }
+        buffer = await mediaResponse.arrayBuffer();
+      } else {
+        // Already a direct media URL
+        buffer = await response.arrayBuffer();
+      }
 
       // Validate file size (10MB)
       if (buffer.byteLength > 10 * 1024 * 1024) {

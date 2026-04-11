@@ -67,9 +67,8 @@ function registerSlashCommands() {
  * Run once when bot starts in a guild
  */
 async function deploySlashCommands() {
-    var _a;
     const token = process.env.DISCORD_TOKEN;
-    const clientId = (_a = bot.user) === null || _a === void 0 ? void 0 : _a.id;
+    const clientId = bot.user?.id;
     if (!token || !clientId) {
         console.warn("⚠️  Cannot deploy slash commands: missing token or clientId");
         return;
@@ -86,8 +85,7 @@ async function deploySlashCommands() {
     }
 }
 bot.on("ready", async () => {
-    var _a;
-    console.log(`\n🤖 Bot ready as ${(_a = bot.user) === null || _a === void 0 ? void 0 : _a.tag}`);
+    console.log(`\n🤖 Bot ready as ${bot.user?.tag}`);
     // Load settings
     settingsManager = await SettingsManager_js_1.SettingsManager.load();
     welcomeManager = await WelcomeManager_js_1.WelcomeManager.load();
@@ -124,14 +122,13 @@ bot.on("ready", async () => {
     startHttpServer();
 });
 bot.on("messageCreate", async (message) => {
-    var _a;
     if (message.author.bot)
         return;
     const settings = settingsManager.get();
     if (!message.content.startsWith(settings.prefix))
         return;
     const args = message.content.slice(settings.prefix.length).trim().split(/\s+/);
-    const commandName = (_a = args.shift()) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+    const commandName = args.shift()?.toLowerCase();
     if (!commandName)
         return;
     const command = commandRegistry.get(commandName);
@@ -147,7 +144,7 @@ bot.on("messageCreate", async (message) => {
         });
         await message.reply(result);
         // Notify dashboard of command execution
-        dashboardServer === null || dashboardServer === void 0 ? void 0 : dashboardServer.broadcastEvent({
+        dashboardServer?.broadcastEvent({
             type: "command:executed",
             data: {
                 command: commandName,
@@ -195,8 +192,8 @@ function startHttpServer() {
 process.on("SIGINT", async () => {
     console.log("\n🛑 Shutting down gracefully...");
     await bot.destroy();
-    await (dashboardServer === null || dashboardServer === void 0 ? void 0 : dashboardServer.close());
-    await (gifManager === null || gifManager === void 0 ? void 0 : gifManager.close());
+    await dashboardServer?.close();
+    await gifManager?.close();
     if (httpServer) {
         httpServer.close();
     }

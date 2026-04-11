@@ -32,11 +32,10 @@ class WelcomeSetupSlashCommand {
         });
     }
     async execute(context) {
-        var _a, _b;
         const interaction = context.interaction;
         const action = interaction.options.getString("action");
         // Check permissions (guild owner or admin)
-        if (!((_b = (_a = interaction.member) === null || _a === void 0 ? void 0 : _a.permissions) === null || _b === void 0 ? void 0 : _b.has("Administrator"))) {
+        if (!interaction.member?.permissions?.has("Administrator")) {
             await interaction.reply({
                 content: "❌ You need Administrator permission to use this command.",
                 ephemeral: true,

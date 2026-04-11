@@ -42,13 +42,12 @@ function createUploadRoutes(options) {
      * Returns: ImageMeta object
      */
     router.post("/gif", upload.single("file"), async (req, res) => {
-        var _a;
         try {
             if (!req.file) {
                 return res.status(400).json({ error: "No file provided" });
             }
             const { originalname, buffer, size } = req.file;
-            const category = ((_a = req.body) === null || _a === void 0 ? void 0 : _a.category) || "welcome";
+            const category = req.body?.category || "welcome";
             // Validate size
             if (size > maxFileSize) {
                 return res.status(413).json({

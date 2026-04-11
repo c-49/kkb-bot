@@ -8,19 +8,28 @@ const path = require('path');
 
 // Check if dist folder exists and critical dependencies are available
 const distPath = path.join(__dirname, 'packages/bot/dist/index.js');
-const dotenvPath = path.join(__dirname, 'node_modules', 'dotenv');
 const lockFilePath = path.join(__dirname, 'package-lock.json');
-const needsBuild = !fs.existsSync(distPath) || !fs.existsSync(dotenvPath);
+
+// Check if critical packages exist
+const criticalModules = ['dotenv', 'discord.js', 'express'];
+const missingModules = criticalModules.filter(mod => 
+  !fs.existsSync(path.join(__dirname, 'node_modules', mod))
+);
+
+const needsBuild = !fs.existsSync(distPath) || missingModules.length > 0;
 
 if (needsBuild) {
   console.log('📦 Installing dependencies and building TypeScript files...');
-  try {
-    // If dotenv is missing but package.json has it, regenerate lock file
-    if (!fs.existsSync(dotenvPath) && fs.existsSync(lockFilePath)) {
-      console.log('⚠️  Removing stale package-lock.json to regenerate dependencies...');
+  
+  if (missingModules.length > 0) {
+    console.log(`⚠️  Missing modules: ${missingModules.join(', ')}`);
+    console.log('⚠️  Removing stale package-lock.json to regenerate dependencies...');
+    if (fs.existsSync(lockFilePath)) {
       fs.unlinkSync(lockFilePath);
     }
-    
+  }
+  
+  try {
     execSync('npm install', { stdio: 'inherit', cwd: __dirname });
     execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
   } catch (error) {

@@ -22,8 +22,7 @@ class SlashCommandRegistry {
         this.commands.set(name, command);
     }
     get(name) {
-        var _a;
-        return (_a = this.commands.get(name)) !== null && _a !== void 0 ? _a : null;
+        return this.commands.get(name) ?? null;
     }
     all() {
         return Array.from(this.commands.values());

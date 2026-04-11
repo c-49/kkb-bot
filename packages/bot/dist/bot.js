@@ -58,7 +58,7 @@ function registerCommands() {
 // Register slash commands
 function registerSlashCommands() {
     slashCommandRegistry.register(new Welcome_js_1.WelcomeSlashCommand());
-    slashCommandRegistry.register(new Welcome_js_1.WelcomeSetupSlashCommand());
+    slashCommandRegistry.register(new Welcome_js_1.WelcomeSetupSlashCommand(welcomeManager));
     // GifCommand will be registered after gifManager is available
     console.log(`⚡ Registered ${slashCommandRegistry.all().length} slash commands`);
 }

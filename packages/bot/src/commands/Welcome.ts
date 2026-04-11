@@ -2,6 +2,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { ISlashCommand, SlashCommandContext } from "@kkb/shared";
+import { WelcomeManager } from "../storage/WelcomeManager.js";
 
 /**
  * /welcome-setup Slash Command
@@ -38,6 +39,8 @@ export class WelcomeSetupSlashCommand implements ISlashCommand {
         .setMaxLength(500)
     );
 
+  constructor(private welcomeManager: WelcomeManager) {}
+
   async execute(context: SlashCommandContext): Promise<void> {
     const interaction = context.interaction;
     const action = interaction.options.getString("action");
@@ -68,9 +71,12 @@ export class WelcomeSetupSlashCommand implements ISlashCommand {
   }
 
   private async handleView(interaction: any): Promise<void> {
+    const settings = this.welcomeManager.get();
+    const channelInfo = settings.channelId ? `<#${settings.channelId}>` : "Not set";
+    const status = settings.enabled ? "✅ Enabled" : "❌ Disabled";
+    
     await interaction.reply({
-      content:
-        "Welcome settings view — configure via dashboard at http://localhost:5173 📊",
+      content: `📊 **Welcome Settings**\n\n**Status:** ${status}\n**Channel:** ${channelInfo}\n**Message:** ${settings.greetingMessage}`,
       ephemeral: true,
     });
   }
@@ -79,14 +85,16 @@ export class WelcomeSetupSlashCommand implements ISlashCommand {
     const channel = interaction.options.getChannel("channel", false);
     if (!channel) {
       await interaction.reply({
-        content: "Please specify a channel using the `channel` option.",
+        content: "❌ Please specify a channel using the `channel` option.",
         ephemeral: true,
       });
       return;
     }
 
+    await this.welcomeManager.update({ channelId: channel.id });
+    
     await interaction.reply({
-      content: `✅ Channel set to <#${channel.id}>. Complete setup on the dashboard.`,
+      content: `✅ Welcome channel set to <#${channel.id}>!`,
       ephemeral: true,
     });
   }
@@ -95,21 +103,28 @@ export class WelcomeSetupSlashCommand implements ISlashCommand {
     const message = interaction.options.getString("message", false);
     if (!message) {
       await interaction.reply({
-        content: "Please specify a message using the `message` option.",
+        content: "❌ Please specify a message using the `message` option.",
         ephemeral: true,
       });
       return;
     }
 
+    await this.welcomeManager.update({ greetingMessage: message });
+    
     await interaction.reply({
-      content: `✅ Message template updated: "${message}"\nComplete setup on the dashboard.`,
+      content: `✅ Welcome message updated!`,
       ephemeral: true,
     });
   }
 
   private async handleToggle(interaction: any): Promise<void> {
+    const settings = this.welcomeManager.get();
+    const newState = !settings.enabled;
+    
+    await this.welcomeManager.update({ enabled: newState });
+    
     await interaction.reply({
-      content: "✅ Toggle setting saved. Complete setup on the dashboard.",
+      content: `✅ Welcome system is now ${newState ? "**enabled**" : "**disabled**"}`,
       ephemeral: true,
     });
   }

@@ -287,6 +287,35 @@ bot.on("guildMemberAdd", async (member) => {
 
 // Handle button interactions
 bot.on("interactionCreate", async (interaction) => {
+  // Handle autocomplete
+  if (interaction.isAutocomplete()) {
+    const { commandName, options } = interaction;
+    
+    if (commandName === "gif") {
+      const focusedValue = options.getFocused(true);
+      
+      if (focusedValue.name === "category") {
+        try {
+          const categories = await gifManager.listCategories();
+          const filtered = categories
+            .filter(cat => cat.name.toLowerCase().includes(focusedValue.value.toLowerCase()))
+            .slice(0, 25); // Discord limit
+          
+          await interaction.respond(
+            filtered.map(cat => ({
+              name: `${cat.name} (${cat.gifCount} GIFs)`,
+              value: cat.name,
+            }))
+          );
+        } catch (err) {
+          console.error("Autocomplete error:", err);
+          await interaction.respond([]);
+        }
+      }
+    }
+    return;
+  }
+
   // Handle slash commands
   if (interaction.isCommand() || interaction.isChatInputCommand()) {
     const command = slashCommandRegistry.get(interaction.commandName);

@@ -5,6 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WelcomeHandler = void 0;
+const promises_1 = require("fs/promises");
 const discord_js_1 = require("discord.js");
 class WelcomeHandler {
     constructor(client, welcomeManager, gifManager) {
@@ -57,14 +58,27 @@ class WelcomeHandler {
             const row = new discord_js_1.ActionRowBuilder().addComponents(giftButton);
             // Send greeting
             if (gifPath) {
-                // Send with GIF attachment
-                const attachment = new discord_js_1.AttachmentBuilder(gifPath);
-                await channel.send({
-                    content: greeting,
-                    files: [attachment],
-                    components: [row],
-                });
-                console.log(`✅ Posted greeting for ${user.tag}`);
+                try {
+                    // Read GIF file as buffer
+                    const gifBuffer = await (0, promises_1.readFile)(gifPath);
+                    const fileName = gifPath.split("/").pop() || "welcome.gif";
+                    const attachment = new discord_js_1.AttachmentBuilder(gifBuffer, { name: fileName });
+                    await channel.send({
+                        content: greeting,
+                        files: [attachment],
+                        components: [row],
+                    });
+                    console.log(`✅ Posted greeting for ${user.tag} with GIF`);
+                }
+                catch (fileErr) {
+                    console.error(`Failed to read GIF file at ${gifPath}:`, fileErr);
+                    // Send without GIF if file read fails
+                    await channel.send({
+                        content: greeting,
+                        components: [row],
+                    });
+                    console.log(`✅ Posted greeting for ${user.tag} (file read failed)`);
+                }
             }
             else {
                 // Send without GIF if none available
@@ -91,13 +105,24 @@ class WelcomeHandler {
                     content: "No greeting GIFs available right now! 😔",
                 });
             }
-            const attachment = new discord_js_1.AttachmentBuilder(gifPath);
-            const newUser = await this.client.users.fetch(userId);
-            await buttonInteraction.editReply({
-                content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
-                files: [attachment],
-            });
-            console.log(`${buttonInteraction.user.tag} sent a welcome GIF to ${newUser.tag}`);
+            try {
+                // Read GIF file as buffer
+                const gifBuffer = await (0, promises_1.readFile)(gifPath);
+                const fileName = gifPath.split("/").pop() || "welcome.gif";
+                const attachment = new discord_js_1.AttachmentBuilder(gifBuffer, { name: fileName });
+                const newUser = await this.client.users.fetch(userId);
+                await buttonInteraction.editReply({
+                    content: `${buttonInteraction.user} sent a warm welcome to ${newUser}! 🎁`,
+                    files: [attachment],
+                });
+                console.log(`${buttonInteraction.user.tag} sent a welcome GIF to ${newUser.tag}`);
+            }
+            catch (fileErr) {
+                console.error(`Failed to read GIF file at ${gifPath}:`, fileErr);
+                await buttonInteraction.editReply({
+                    content: "Error sending welcome GIF 😢 (file read failed)",
+                });
+            }
         }
         catch (err) {
             console.error("Error handling welcome GIF button:", err);

@@ -180,7 +180,7 @@ class GifCommand {
             }
             console.log(`[GifCommand] Downloaded ${buffer.byteLength} bytes, uploading to category: ${categoryName}`);
             // Upload to GIF manager
-            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), gifName.endsWith(".gif") ? gifName : `${gifName}.gif`, interaction.user.id);
+            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), gifName.endsWith(".gif") ? gifName : `${gifName}.gif`, interaction.user.id, gifUrl);
             await interaction.editReply({
                 content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB\n🔗 [Original URL](${gifUrl})`,
             });

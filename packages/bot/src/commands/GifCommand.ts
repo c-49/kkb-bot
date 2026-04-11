@@ -227,7 +227,8 @@ export class GifCommand implements ISlashCommand {
         categoryName,
         Buffer.from(buffer),
         gifName.endsWith(".gif") ? gifName : `${gifName}.gif`,
-        interaction.user.id
+        interaction.user.id,
+        gifUrl
       );
 
       await interaction.editReply({

@@ -59,6 +59,7 @@ export class GifManager {
             size INT NOT NULL,
             uploader_id VARCHAR(255),
             description TEXT,
+            source_url TEXT,
             uploaded_at BIGINT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (category_id) REFERENCES gif_categories(id) ON DELETE CASCADE,
@@ -67,6 +68,18 @@ export class GifManager {
             KEY idx_categories_name (name)
           )
         `);
+
+        // Add source_url column if it doesn't exist (for existing databases)
+        try {
+          await connection.query(`
+            ALTER TABLE gifs ADD COLUMN source_url TEXT AFTER description
+          `);
+        } catch (err: any) {
+          // Column might already exist, that's fine
+          if (!err.message?.includes("Duplicate column")) {
+            console.warn("Could not add source_url column:", err.message);
+          }
+        }
 
         console.log("✅ GIF database schema initialized");
       } finally {
@@ -211,6 +224,7 @@ export class GifManager {
     fileBuffer: Buffer,
     fileName: string,
     uploaderId?: string,
+    sourceUrl?: string,
     maxSizeBytes: number = 10 * 1024 * 1024
   ): Promise<ImageMeta> {
     // Validate size
@@ -267,13 +281,14 @@ export class GifManager {
 
         // Store in database
         await connection.query(
-          `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), "User uploaded GIF"]
+          `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]
         );
 
-        console.log(`✅ GIF uploaded to "${category}": ${fileName} (${id})`);
-
+        console.log(`✅ GIF uploaded to "${category}": ${fileName}`);
+        console.log(`   File path: ${filePath}`);
+        console.log(`   File size: ${fileBuffer.length} bytes`);
         return {
           id,
           name: fileName,
@@ -330,11 +345,11 @@ export class GifManager {
   /**
    * Get random GIF from a category, optionally resized
    */
-  async getRandomGif(category?: string, width?: number, height?: number): Promise<string | null> {
+  async getRandomGif(category?: string, width?: number, height?: number): Promise<{ path: string | null; sourceUrl: string | null }> {
     try {
       const connection = await this.pool.getConnection();
       try {
-        let query = `SELECT id, file_path FROM gifs`;
+        let query = `SELECT id, file_path, source_url FROM gifs`;
         const params: any[] = [];
 
         if (category) {
@@ -349,24 +364,25 @@ export class GifManager {
         const [rows] = await connection.query(query, params);
 
         if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-          return null;
+          return { path: null, sourceUrl: null };
         }
 
         const row = Array.isArray(rows) ? rows[0] : rows;
-        const { id, file_path } = row as any;
+        const { id, file_path, source_url } = row as any;
 
         if (!width || !height) {
-          return file_path;
+          return { path: file_path, sourceUrl: source_url };
         }
 
         // Return resized version if available
-        return await this.getResizedGif(id, file_path, width, height);
+        const resizedPath = await this.getResizedGif(id, file_path, width, height);
+        return { path: resizedPath, sourceUrl: source_url };
       } finally {
         connection.release();
       }
     } catch (error) {
       console.error("Failed to get random GIF:", error);
-      return null;
+      return { path: null, sourceUrl: null };
     }
   }
 

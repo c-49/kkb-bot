@@ -214,6 +214,7 @@ export class GifCommand implements ISlashCommand {
 
       const contentType = response.headers.get("content-type") ?? "";
       let buffer: ArrayBuffer;
+      let sourceUrl: string; // the embeddable direct media URL saved to DB
 
       if (contentType.includes("text/html")) {
         // It's a Tenor page URL — extract the direct GIF URL from the og:image meta tag
@@ -229,14 +230,16 @@ export class GifCommand implements ISlashCommand {
           );
         }
 
-        console.log(`[GifCommand] Resolved Tenor page to direct URL: ${match[1]}`);
-        const mediaResponse = await fetch(match[1]);
+        sourceUrl = match[1];
+        console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
+        const mediaResponse = await fetch(sourceUrl);
         if (!mediaResponse.ok) {
           throw new Error(`Failed to download GIF media: ${mediaResponse.status}`);
         }
         buffer = await mediaResponse.arrayBuffer();
       } else {
-        // Already a direct media URL
+        // Already a direct media URL — use as-is
+        sourceUrl = gifUrl;
         buffer = await response.arrayBuffer();
       }
 
@@ -265,7 +268,7 @@ export class GifCommand implements ISlashCommand {
         Buffer.from(buffer),
         gifName.endsWith(".gif") ? gifName : `${gifName}.gif`,
         interaction.user.id,
-        gifUrl
+        sourceUrl
       );
 
       await interaction.editReply({

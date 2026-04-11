@@ -180,6 +180,7 @@ class GifCommand {
             }
             const contentType = response.headers.get("content-type") ?? "";
             let buffer;
+            let sourceUrl; // the embeddable direct media URL saved to DB
             if (contentType.includes("text/html")) {
                 // It's a Tenor page URL — extract the direct GIF URL from the og:image meta tag
                 const html = await response.text();
@@ -189,15 +190,17 @@ class GifCommand {
                     throw new Error("Could not extract a direct GIF URL from that Tenor page.\n" +
                         "Right-click the GIF on Tenor → **Copy image address** and paste that URL instead.");
                 }
-                console.log(`[GifCommand] Resolved Tenor page to direct URL: ${match[1]}`);
-                const mediaResponse = await fetch(match[1]);
+                sourceUrl = match[1];
+                console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
+                const mediaResponse = await fetch(sourceUrl);
                 if (!mediaResponse.ok) {
                     throw new Error(`Failed to download GIF media: ${mediaResponse.status}`);
                 }
                 buffer = await mediaResponse.arrayBuffer();
             }
             else {
-                // Already a direct media URL
+                // Already a direct media URL — use as-is
+                sourceUrl = gifUrl;
                 buffer = await response.arrayBuffer();
             }
             // Validate file size (10MB)
@@ -215,7 +218,7 @@ class GifCommand {
             }
             console.log(`[GifCommand] Downloaded ${buffer.byteLength} bytes, uploading to category: ${categoryName}`);
             // Upload to GIF manager
-            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), gifName.endsWith(".gif") ? gifName : `${gifName}.gif`, interaction.user.id, gifUrl);
+            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), gifName.endsWith(".gif") ? gifName : `${gifName}.gif`, interaction.user.id, sourceUrl);
             await interaction.editReply({
                 content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB\n🔗 [Original URL](${gifUrl})`,
             });

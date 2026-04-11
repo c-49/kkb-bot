@@ -55,7 +55,7 @@ function createUploadRoutes(options) {
                 });
             }
             // Upload GIF to category
-            const gifMeta = await gifManager.uploadGif(category, buffer, originalname, undefined, maxFileSize);
+            const gifMeta = await gifManager.uploadGif(category, buffer, originalname, undefined, undefined, maxFileSize);
             return res.status(201).json(gifMeta);
         }
         catch (error) {
@@ -116,11 +116,11 @@ function createUploadRoutes(options) {
             const category = req.query.category || "welcome";
             const width = req.query.width ? parseInt(req.query.width) : undefined;
             const height = req.query.height ? parseInt(req.query.height) : undefined;
-            const gifPath = await gifManager.getRandomGif(category, width, height);
-            if (!gifPath) {
+            const gifData = await gifManager.getRandomGif(category, width, height);
+            if (!gifData.path) {
                 return res.status(404).json({ error: `No GIFs found in category: ${category}` });
             }
-            return res.sendFile(gifPath);
+            return res.sendFile(gifData.path);
         }
         catch (error) {
             console.error("Get random GIF error:", error);

@@ -66,6 +66,7 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
         buffer,
         originalname,
         undefined,
+        undefined,
         maxFileSize
       );
 
@@ -130,13 +131,13 @@ export function createUploadRoutes(options: UploadRouteOptions): Router {
       const width = req.query.width ? parseInt(req.query.width as string) : undefined;
       const height = req.query.height ? parseInt(req.query.height as string) : undefined;
 
-      const gifPath = await gifManager.getRandomGif(category, width, height);
+      const gifData = await gifManager.getRandomGif(category, width, height);
 
-      if (!gifPath) {
+      if (!gifData.path) {
         return res.status(404).json({ error: `No GIFs found in category: ${category}` });
       }
 
-      return res.sendFile(gifPath);
+      return res.sendFile(gifData.path);
     } catch (error) {
       console.error("Get random GIF error:", error);
       return res.status(500).json({

@@ -50,20 +50,16 @@ class GifCommand {
                 .setMaxLength(200)))
                 .addSubcommand((sub) => sub
                 .setName("upload")
-                .setDescription("Upload a GIF to a category — attach a file or paste a Tenor URL (use in DM)")
+                .setDescription("Upload a Tenor GIF URL to a category (use in DM). To upload a file, just send it in DM!")
                 .addStringOption((opt) => opt
                 .setName("category")
                 .setDescription("Category to upload to")
                 .setRequired(true)
                 .setAutocomplete(true))
-                .addAttachmentOption((opt) => opt
-                .setName("file")
-                .setDescription("GIF, PNG, or JPG file to upload directly")
-                .setRequired(false))
                 .addStringOption((opt) => opt
                 .setName("url")
                 .setDescription("Tenor GIF URL (e.g., https://tenor.com/view/...)")
-                .setRequired(false)))
+                .setRequired(true)))
                 .addSubcommand((sub) => sub
                 .setName("show")
                 .setDescription("Show a random GIF from a category")
@@ -152,87 +148,58 @@ class GifCommand {
         });
     }
     async handleUpload(interaction) {
-        // Can only use in DM
         if (interaction.guild) {
             await interaction.reply({
-                content: "📬 Please use this command in DMs with the bot. Type `/gif upload` in a DM!",
+                content: "📬 Please use this command in DMs with the bot.\nTo upload a file instead, just drag and drop it into a DM — no command needed!",
                 ephemeral: true,
             });
             return;
         }
         const categoryName = interaction.options.getString("category");
         const gifUrl = interaction.options.getString("url");
-        const attachment = interaction.options.getAttachment("file");
-        if (!gifUrl && !attachment) {
+        if (!gifUrl.includes("tenor.com")) {
             await interaction.reply({
-                content: "❌ Please provide either a file attachment or a Tenor URL.",
+                content: "❌ Invalid URL. Please use a Tenor GIF URL (e.g., https://tenor.com/view/...)",
                 ephemeral: true,
             });
             return;
         }
         await interaction.deferReply({ ephemeral: true });
         try {
+            const urlObj = new URL(gifUrl);
+            const parts = urlObj.pathname.split("/");
+            const gifName = parts[parts.length - 1] || "tenor-gif";
+            console.log(`[GifCommand] Downloading GIF from Tenor: ${gifName}`);
+            const response = await fetch(gifUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+            }
+            const contentType = response.headers.get("content-type") ?? "";
             let buffer;
-            let fileName;
             let sourceUrl;
-            if (attachment) {
-                // ── Direct file upload ──────────────────────────────────────────
-                const allowed = ["image/gif", "image/png", "image/jpeg", "image/jpg"];
-                if (!allowed.includes(attachment.contentType ?? "")) {
-                    await interaction.editReply({ content: "❌ Only GIF, PNG, and JPG files are supported." });
-                    return;
+            if (contentType.includes("text/html")) {
+                const html = await response.text();
+                const match = html.match(/property="og:image"\s+content="(https:\/\/[^"]+\.gif[^"]*)"/) ||
+                    html.match(/content="(https:\/\/[^"]+\.gif[^"]*)"\s+property="og:image"/);
+                if (!match?.[1]) {
+                    throw new Error("Could not extract a direct GIF URL from that Tenor page.\n" +
+                        "Right-click the GIF on Tenor → **Copy image address** and paste that URL instead.");
                 }
-                console.log(`[GifCommand] Downloading attachment: ${attachment.name}`);
-                const response = await fetch(attachment.url);
-                if (!response.ok) {
-                    throw new Error(`Failed to download attachment: ${response.status}`);
+                const rawUrl = match[1];
+                const tenorIdMatch = rawUrl.match(/\/\/media\d*\.tenor\.com\/m\/([^/]+)\//);
+                sourceUrl = tenorIdMatch
+                    ? `https://c.tenor.com/${tenorIdMatch[1]}/tenor.gif`
+                    : rawUrl;
+                console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
+                const mediaResponse = await fetch(sourceUrl);
+                if (!mediaResponse.ok) {
+                    throw new Error(`Failed to download GIF media: ${mediaResponse.status}`);
                 }
-                buffer = await response.arrayBuffer();
-                fileName = attachment.name;
-                // No sourceUrl — Supabase URL will be used for display
+                buffer = await mediaResponse.arrayBuffer();
             }
             else {
-                // ── Tenor URL ───────────────────────────────────────────────────
-                if (!gifUrl.includes("tenor.com")) {
-                    await interaction.editReply({
-                        content: "❌ Invalid URL. Please use a Tenor GIF URL (e.g., https://tenor.com/view/...)",
-                    });
-                    return;
-                }
-                const urlObj = new URL(gifUrl);
-                const parts = urlObj.pathname.split("/");
-                const gifName = parts[parts.length - 1] || "tenor-gif";
-                console.log(`[GifCommand] Downloading GIF from Tenor: ${gifName}`);
-                const response = await fetch(gifUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
-                }
-                const contentType = response.headers.get("content-type") ?? "";
-                if (contentType.includes("text/html")) {
-                    const html = await response.text();
-                    const match = html.match(/property="og:image"\s+content="(https:\/\/[^"]+\.gif[^"]*)"/) ||
-                        html.match(/content="(https:\/\/[^"]+\.gif[^"]*)"\s+property="og:image"/);
-                    if (!match?.[1]) {
-                        throw new Error("Could not extract a direct GIF URL from that Tenor page.\n" +
-                            "Right-click the GIF on Tenor → **Copy image address** and paste that URL instead.");
-                    }
-                    const rawUrl = match[1];
-                    const tenorIdMatch = rawUrl.match(/\/\/media\d*\.tenor\.com\/m\/([^/]+)\//);
-                    sourceUrl = tenorIdMatch
-                        ? `https://c.tenor.com/${tenorIdMatch[1]}/tenor.gif`
-                        : rawUrl;
-                    console.log(`[GifCommand] Resolved Tenor page to direct URL: ${sourceUrl}`);
-                    const mediaResponse = await fetch(sourceUrl);
-                    if (!mediaResponse.ok) {
-                        throw new Error(`Failed to download GIF media: ${mediaResponse.status}`);
-                    }
-                    buffer = await mediaResponse.arrayBuffer();
-                }
-                else {
-                    sourceUrl = gifUrl;
-                    buffer = await response.arrayBuffer();
-                }
-                fileName = gifName.endsWith(".gif") ? gifName : `${gifName}.gif`;
+                sourceUrl = gifUrl;
+                buffer = await response.arrayBuffer();
             }
             if (buffer.byteLength > 10 * 1024 * 1024) {
                 await interaction.editReply({
@@ -244,12 +211,9 @@ class GifCommand {
                 await interaction.editReply({ content: "❌ Downloaded file is empty. Please try again." });
                 return;
             }
-            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), fileName, interaction.user.id, sourceUrl);
-            const sourceNote = sourceUrl
-                ? `\n🔗 [Tenor source](${gifUrl})`
-                : `\n☁️ Stored in Supabase`;
+            const uploadedGif = await this.gifManager.uploadGif(categoryName, Buffer.from(buffer), gifName.endsWith(".gif") ? gifName : `${gifName}.gif`, interaction.user.id, sourceUrl);
             await interaction.editReply({
-                content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB${sourceNote}`,
+                content: `✅ Uploaded **${uploadedGif.name}** to **${categoryName}**\n📊 Size: ${(uploadedGif.size / 1024).toFixed(2)} KB\n🔗 [Tenor source](${gifUrl})`,
             });
         }
         catch (error) {

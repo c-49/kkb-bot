@@ -44,8 +44,12 @@ const bot = new discord_js_1.Client({
         discord_js_1.GatewayIntentBits.Guilds,
         discord_js_1.GatewayIntentBits.GuildMessages,
         discord_js_1.GatewayIntentBits.GuildMembers, // for member join events
+        discord_js_1.GatewayIntentBits.DirectMessages, // for DM-based GIF uploads
+        discord_js_1.GatewayIntentBits.MessageContent, // to read message content in DMs
     ],
 });
+// Pending DM GIF uploads awaiting category selection { userId -> attachment info }
+const pendingGifUploads = new Map();
 let settingsManager;
 let welcomeManager;
 let welcomeHandler;
@@ -142,6 +146,59 @@ bot.on("ready", async () => {
 bot.on("messageCreate", async (message) => {
     if (message.author.bot)
         return;
+    // ── DM GIF upload flow ──────────────────────────────────────────────────
+    if (!message.guild) {
+        const imageAttachment = [...message.attachments.values()].find((a) => a.contentType?.startsWith("image/"));
+        if (imageAttachment) {
+            const userId = message.author.id;
+            const text = message.content.trim().toLowerCase();
+            try {
+                const categories = await gifManager.listCategories();
+                // If they typed a category name in the message, upload straight away
+                const matched = categories.find((c) => c.name === text);
+                if (matched) {
+                    await uploadDmGif(message, imageAttachment, matched.name);
+                    return;
+                }
+                // No category — store the pending upload and ask
+                if (categories.length === 0) {
+                    await message.reply("❌ No categories exist yet. Ask an admin to create one with `/gif create`.");
+                    return;
+                }
+                const existing = pendingGifUploads.get(userId);
+                if (existing)
+                    clearTimeout(existing.timeout);
+                const timeout = setTimeout(() => pendingGifUploads.delete(userId), 5 * 60 * 1000);
+                pendingGifUploads.set(userId, {
+                    url: imageAttachment.url,
+                    contentType: imageAttachment.contentType ?? "image/gif",
+                    fileName: imageAttachment.name,
+                    timeout,
+                });
+                const select = new discord_js_1.StringSelectMenuBuilder()
+                    .setCustomId("gif_category_select")
+                    .setPlaceholder("Pick a category")
+                    .addOptions(categories.slice(0, 25).map((c) => ({
+                    label: c.name,
+                    description: `${c.gifCount}/20 GIFs`,
+                    value: c.name,
+                })));
+                const row = new discord_js_1.ActionRowBuilder().addComponents(select);
+                await message.reply({
+                    content: "📁 Which category should I add this to?",
+                    components: [row],
+                });
+            }
+            catch (err) {
+                console.error("[DM upload] Error:", err);
+                await message.reply("❌ Something went wrong. Please try again.");
+            }
+            return;
+        }
+        // Ignore other DM messages
+        return;
+    }
+    // ── Guild prefix commands ───────────────────────────────────────────────
     const settings = settingsManager.get();
     if (!message.content.startsWith(settings.prefix))
         return;
@@ -161,14 +218,9 @@ bot.on("messageCreate", async (message) => {
             timestamp: Date.now(),
         });
         await message.reply(result);
-        // Notify dashboard of command execution
         dashboardServer?.broadcastEvent({
             type: "command:executed",
-            data: {
-                command: commandName,
-                result,
-                timestamp: Date.now(),
-            },
+            data: { command: commandName, result, timestamp: Date.now() },
         });
     }
     catch (err) {
@@ -176,6 +228,21 @@ bot.on("messageCreate", async (message) => {
         await message.reply("⚠️ An error occurred executing the command");
     }
 });
+async function uploadDmGif(message, attachment, category) {
+    try {
+        const response = await fetch(attachment.url);
+        if (!response.ok)
+            throw new Error(`Failed to download attachment: ${response.status}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const result = await gifManager.uploadGif(category, buffer, attachment.name, message.author.id);
+        await message.reply(`✅ Uploaded **${result.name}** to **${category}**\n📊 Size: ${(result.size / 1024).toFixed(2)} KB\n☁️ Stored in Supabase`);
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        console.error("[DM upload] uploadDmGif error:", err);
+        await message.reply(`❌ ${msg}`);
+    }
+}
 /**
  * Start HTTP server for file uploads
  */
@@ -369,6 +436,34 @@ bot.on("interactionCreate", async (interaction) => {
                 await welcomeHandler.handleGreetingGifButton(userId, interaction);
             }
         }
+        return;
+    }
+    // Handle category select menu from DM GIF upload
+    if (interaction.isStringSelectMenu() && interaction.customId === "gif_category_select") {
+        const userId = interaction.user.id;
+        const pending = pendingGifUploads.get(userId);
+        if (!pending) {
+            await interaction.reply({ content: "❌ Upload expired — please resend the GIF.", ephemeral: true });
+            return;
+        }
+        const category = interaction.values[0];
+        await interaction.deferReply();
+        try {
+            clearTimeout(pending.timeout);
+            pendingGifUploads.delete(userId);
+            const response = await fetch(pending.url);
+            if (!response.ok)
+                throw new Error(`Failed to download: ${response.status}`);
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const result = await gifManager.uploadGif(category, buffer, pending.fileName, userId);
+            await interaction.editReply(`✅ Uploaded **${result.name}** to **${category}**\n📊 Size: ${(result.size / 1024).toFixed(2)} KB\n☁️ Stored in Supabase`);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : "Upload failed";
+            console.error("[DM upload] Select menu error:", err);
+            await interaction.editReply(`❌ ${msg}`);
+        }
+        return;
     }
 });
 // Register commands and start bot

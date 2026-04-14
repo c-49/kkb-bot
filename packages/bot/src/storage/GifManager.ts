@@ -1,42 +1,41 @@
-import fs from "fs/promises";
-import fsSync from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
-// @ts-ignore - sharp types not yet installed
-import sharp from "sharp";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 // @ts-ignore - mysql2 types not yet installed
 import mysql from "mysql2/promise";
 import { ImageMeta } from "@kkb/shared";
+import path from "path";
 
 /**
  * GIF Manager
- * Handles GIF storage, resizing, and database persistence
+ * Handles GIF storage via Supabase S3-compatible storage and database persistence
  */
 
 export class GifManager {
   private pool: mysql.Pool;
-  private giftFolderPath: string;
-  private resizeCachePath: string;
+  private s3: S3Client;
+  private bucket: string;
+  private publicUrlBase: string;
   private readonly MAX_GIFS_PER_CATEGORY = 20;
-  private displayWidth: number;
-  private displayHeight: number;
 
-  constructor(giftFolderPath?: string) {
-    // Use GIF_STORAGE_PATH env var (for Render disk), fall back to ./gifs
-    this.giftFolderPath = giftFolderPath || process.env.GIF_STORAGE_PATH || "./gifs";
-    this.resizeCachePath = path.join(this.giftFolderPath, "resized");
+  constructor() {
+    const endpoint = process.env.SUPABASE_S3_ENDPOINT;
+    const accessKeyId = process.env.SUPABASE_S3_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.SUPABASE_S3_SECRET_ACCESS_KEY;
+    this.bucket = process.env.SUPABASE_S3_BUCKET ?? "gifs";
+    this.publicUrlBase = process.env.SUPABASE_PUBLIC_URL ?? "";
 
-    // Load display dimensions from config.json, fall back to 256×256
-    try {
-      const configPath = path.resolve(process.cwd(), "config.json");
-      const raw = fsSync.readFileSync(configPath, "utf8");
-      const config = JSON.parse(raw) as { gif?: { width?: number; height?: number } };
-      this.displayWidth = config?.gif?.width ?? 256;
-      this.displayHeight = config?.gif?.height ?? 256;
-    } catch {
-      this.displayWidth = 256;
-      this.displayHeight = 256;
+    if (!endpoint || !accessKeyId || !secretAccessKey || !this.publicUrlBase) {
+      throw new Error(
+        "Missing required Supabase S3 env vars: SUPABASE_S3_ENDPOINT, SUPABASE_S3_ACCESS_KEY_ID, SUPABASE_S3_SECRET_ACCESS_KEY, SUPABASE_PUBLIC_URL"
+      );
     }
+
+    this.s3 = new S3Client({
+      forcePathStyle: true,
+      region: process.env.SUPABASE_S3_REGION ?? "us-east-1",
+      endpoint,
+      credentials: { accessKeyId, secretAccessKey },
+    });
 
     this.pool = mysql.createPool({
       uri: process.env.DATABASE_URL,
@@ -45,8 +44,15 @@ export class GifManager {
       queueLimit: 0,
     });
 
-    console.log(`📁 GIF storage path: ${this.giftFolderPath}`);
-    console.log(`🖼️  GIF display size: ${this.displayWidth}×${this.displayHeight}`);
+    console.log(`☁️  Supabase S3 bucket: ${this.bucket}`);
+    console.log(`🌐 Public URL base: ${this.publicUrlBase}`);
+  }
+
+  /**
+   * Build the public URL for an object key
+   */
+  private publicUrl(key: string): string {
+    return `${this.publicUrlBase}/storage/v1/object/public/${this.bucket}/${key}`;
   }
 
   /**
@@ -87,25 +93,19 @@ export class GifManager {
 
         // Add source_url column if it doesn't exist (for existing databases)
         try {
-          await connection.query(`
-            ALTER TABLE gifs ADD COLUMN source_url TEXT AFTER description
-          `);
+          await connection.query(`ALTER TABLE gifs ADD COLUMN source_url TEXT AFTER description`);
         } catch (err: any) {
-          // Column might already exist, that's fine
           if (!err.message?.includes("Duplicate column")) {
             console.warn("Could not add source_url column:", err.message);
           }
         }
 
-        // Add blob_data column if it doesn't exist (MEDIUMBLOB supports up to 16MB)
+        // Drop blob_data column if it exists — files now live in Supabase
         try {
-          await connection.query(`
-            ALTER TABLE gifs ADD COLUMN blob_data MEDIUMBLOB AFTER source_url
-          `);
-        } catch (err: any) {
-          if (!err.message?.includes("Duplicate column")) {
-            console.warn("Could not add blob_data column:", err.message);
-          }
+          await connection.query(`ALTER TABLE gifs DROP COLUMN blob_data`);
+          console.log("✅ Dropped blob_data column (files now in Supabase Storage)");
+        } catch {
+          // Column didn't exist, fine
         }
 
         console.log("✅ GIF database schema initialized");
@@ -114,18 +114,6 @@ export class GifManager {
       }
     } catch (error) {
       console.error("Failed to initialize GIF database:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Ensure a directory exists
-   */
-  private async ensureDirectory(dirPath: string): Promise<void> {
-    try {
-      await fs.mkdir(dirPath, { recursive: true });
-    } catch (error) {
-      console.error(`Failed to create directory ${dirPath}:`, error);
       throw error;
     }
   }
@@ -143,29 +131,17 @@ export class GifManager {
       const normalizedName = name.toLowerCase();
       const connection = await this.pool.getConnection();
       try {
-        console.log(`[GifManager] Creating category: ${name} (normalized: ${normalizedName})`);
         await connection.query(
-          `INSERT INTO gif_categories (id, name, description, created_by)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT INTO gif_categories (id, name, description, created_by) VALUES (?, ?, ?, ?)`,
           [id, normalizedName, description || null, createdBy || null]
         );
-
         console.log(`✅ Created GIF category: ${normalizedName} (ID: ${id})`);
-
-        // Create folder for category
-        await this.ensureDirectory(path.join(this.giftFolderPath, normalizedName));
-
-        return {
-          id,
-          name: normalizedName,
-          description,
-        };
+        return { id, name: normalizedName, description };
       } finally {
         connection.release();
       }
     } catch (error: any) {
       if (error.code === "ER_DUP_ENTRY") {
-        // Unique constraint violation
         throw new Error(`Category "${name}" already exists`);
       }
       console.error("Failed to create category:", error);
@@ -184,17 +160,9 @@ export class GifManager {
           `SELECT id, name, description FROM gif_categories WHERE name = ?`,
           [name.toLowerCase()]
         );
-
-        if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-          return null;
-        }
-
+        if (!rows || (Array.isArray(rows) && rows.length === 0)) return null;
         const row = Array.isArray(rows) ? rows[0] : rows;
-        return {
-          id: (row as any).id,
-          name: (row as any).name,
-          description: (row as any).description,
-        };
+        return { id: (row as any).id, name: (row as any).name, description: (row as any).description };
       } finally {
         connection.release();
       }
@@ -211,29 +179,19 @@ export class GifManager {
     try {
       const connection = await this.pool.getConnection();
       try {
-        console.log("[GifManager] Querying all categories...");
         const [rows] = await connection.query(`
-          SELECT 
-            c.id, 
-            c.name, 
-            c.description,
-            COUNT(g.id) as gif_count
+          SELECT c.id, c.name, c.description, COUNT(g.id) as gif_count
           FROM gif_categories c
           LEFT JOIN gifs g ON c.id = g.category_id
           GROUP BY c.id, c.name, c.description
           ORDER BY c.name ASC
         `);
-
-        const result = (Array.isArray(rows) ? rows : []).map((row: any) => ({
+        return (Array.isArray(rows) ? rows : []).map((row: any) => ({
           id: row.id,
           name: row.name,
           description: row.description,
           gifCount: parseInt(row.gif_count, 10),
         }));
-        
-        console.log(`[GifManager] Found ${result.length} categories:`, result.map(c => `${c.name} (${c.gifCount} GIFs)`));
-        
-        return result;
       } finally {
         connection.release();
       }
@@ -244,7 +202,7 @@ export class GifManager {
   }
 
   /**
-   * Upload and store a GIF to a category
+   * Upload and store a GIF to Supabase S3
    */
   async uploadGif(
     category: string,
@@ -254,81 +212,63 @@ export class GifManager {
     sourceUrl?: string,
     maxSizeBytes: number = 10 * 1024 * 1024
   ): Promise<ImageMeta> {
-    // Validate size
     if (fileBuffer.length > maxSizeBytes) {
-      throw new Error(
-        `File size ${fileBuffer.length} exceeds maximum ${maxSizeBytes}`
-      );
+      throw new Error(`File size ${fileBuffer.length} exceeds maximum ${maxSizeBytes}`);
     }
 
-    // Validate file type
-    if (
-      !fileName.toLowerCase().endsWith(".gif") &&
-      !fileName.toLowerCase().endsWith(".png") &&
-      !fileName.toLowerCase().endsWith(".jpg") &&
-      !fileName.toLowerCase().endsWith(".jpeg")
-    ) {
+    const ext = path.extname(fileName).toLowerCase();
+    if (![".gif", ".png", ".jpg", ".jpeg"].includes(ext)) {
       throw new Error("Only GIF, PNG, and JPG files are supported");
     }
 
+    const connection = await this.pool.getConnection();
     try {
-      const connection = await this.pool.getConnection();
-      try {
-        // Get or create category
-        let categoryData = await this.getCategoryByName(category);
-        if (!categoryData) {
-          categoryData = await this.createCategory(category, undefined, uploaderId);
-        }
-
-        // Check GIF count for this category
-        const [countRows] = await connection.query(
-          `SELECT COUNT(*) as count FROM gifs WHERE category_id = ?`,
-          [categoryData.id]
-        );
-        const gifCount = parseInt(((countRows as any)[0]).count, 10);
-
-        if (gifCount >= this.MAX_GIFS_PER_CATEGORY) {
-          throw new Error(
-            `Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`
-          );
-        }
-
-        // Ensure category folder exists
-        const categoryFolder = path.join(this.giftFolderPath, categoryData.name);
-        await this.ensureDirectory(categoryFolder);
-
-        // Generate unique filename
-        const id = randomUUID();
-        const ext = path.extname(fileName);
-        const storedFileName = `${id}${ext}`;
-        const filePath = path.join(categoryFolder, storedFileName);
-
-        // Write file
-        await fs.writeFile(filePath, fileBuffer);
-
-        // Store in database (blob_data holds the raw file for future use)
-        await connection.query(
-          `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description, blob_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, categoryData.id, fileName, filePath, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF", fileBuffer]
-        );
-
-        console.log(`✅ GIF uploaded to "${category}": ${fileName}`);
-        console.log(`   File path: ${filePath}`);
-        console.log(`   File size: ${fileBuffer.length} bytes`);
-        return {
-          id,
-          name: fileName,
-          path: filePath,
-          uploadedAt: Date.now(),
-          size: fileBuffer.length,
-        };
-      } finally {
-        connection.release();
+      // Get or create category
+      let categoryData = await this.getCategoryByName(category);
+      if (!categoryData) {
+        categoryData = await this.createCategory(category, undefined, uploaderId);
       }
-    } catch (error) {
-      console.error("Failed to upload GIF:", error);
-      throw error;
+
+      // Check GIF count for this category
+      const [countRows] = await connection.query(
+        `SELECT COUNT(*) as count FROM gifs WHERE category_id = ?`,
+        [categoryData.id]
+      );
+      const gifCount = parseInt(((countRows as any)[0]).count, 10);
+      if (gifCount >= this.MAX_GIFS_PER_CATEGORY) {
+        throw new Error(`Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`);
+      }
+
+      // Upload to Supabase S3
+      const id = randomUUID();
+      const storedFileName = `${id}${ext}`;
+      const key = `${categoryData.name}/${storedFileName}`;
+
+      const contentType = ext === ".gif" ? "image/gif"
+        : ext === ".png" ? "image/png"
+        : "image/jpeg";
+
+      await this.s3.send(new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: fileBuffer,
+        ContentType: contentType,
+      }));
+
+      const fileUrl = this.publicUrl(key);
+
+      // Store metadata in database
+      await connection.query(
+        `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, categoryData.id, fileName, fileUrl, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]
+      );
+
+      console.log(`✅ GIF uploaded to Supabase "${category}": ${fileName}`);
+      console.log(`   URL: ${fileUrl}`);
+      return { id, name: fileName, path: fileUrl, uploadedAt: Date.now(), size: fileBuffer.length };
+    } finally {
+      connection.release();
     }
   }
 
@@ -341,18 +281,12 @@ export class GifManager {
       try {
         let query = `SELECT id, name, file_path, size, uploaded_at, source_url FROM gifs`;
         const params: any[] = [];
-
         if (category) {
-          query += ` WHERE category_id IN (
-            SELECT id FROM gif_categories WHERE name = ?
-          )`;
+          query += ` WHERE category_id IN (SELECT id FROM gif_categories WHERE name = ?)`;
           params.push(category.toLowerCase());
         }
-
         query += ` ORDER BY uploaded_at DESC`;
-
         const [rows] = await connection.query(query, params);
-
         return (Array.isArray(rows) ? rows : []).map((row: any) => ({
           id: row.id,
           name: row.name,
@@ -371,155 +305,68 @@ export class GifManager {
   }
 
   /**
-   * Get random GIF from a category, optionally resized
+   * Get random GIF from a category
+   * Returns sourceUrl (Tenor) if available, otherwise the Supabase storage URL
    */
-  async getRandomGif(category?: string, width?: number, height?: number): Promise<{ path: string | null; sourceUrl: string | null }> {
+  async getRandomGif(category?: string): Promise<{ url: string | null; sourceUrl: string | null }> {
     try {
       const connection = await this.pool.getConnection();
       try {
         let query = `SELECT id, file_path, source_url FROM gifs`;
         const params: any[] = [];
-
         if (category) {
-          query += ` WHERE category_id IN (
-            SELECT id FROM gif_categories WHERE name = ?
-          )`;
+          query += ` WHERE category_id IN (SELECT id FROM gif_categories WHERE name = ?)`;
           params.push(category.toLowerCase());
         }
-
         query += ` ORDER BY RAND() LIMIT 1`;
-
         const [rows] = await connection.query(query, params);
-
         if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-          return { path: null, sourceUrl: null };
+          return { url: null, sourceUrl: null };
         }
-
         const row = Array.isArray(rows) ? rows[0] : rows;
-        const { id, file_path, source_url } = row as any;
-
-        if (!width || !height) {
-          return { path: file_path, sourceUrl: source_url };
-        }
-
-        // Return resized version if available
-        const resizedPath = await this.getResizedGif(id, file_path, width, height);
-        return { path: resizedPath, sourceUrl: source_url };
+        return {
+          url: (row as any).file_path,
+          sourceUrl: (row as any).source_url ?? null,
+        };
       } finally {
         connection.release();
       }
     } catch (error) {
       console.error("Failed to get random GIF:", error);
-      return { path: null, sourceUrl: null };
+      return { url: null, sourceUrl: null };
     }
   }
 
   /**
-   * Get resized GIF, creating cache if needed
-   */
-  private async getResizedGif(
-    id: string,
-    originalPath: string,
-    width: number,
-    height: number
-  ): Promise<string> {
-    const cacheDir = path.join(this.resizeCachePath, `${width}x${height}`);
-    const cachedPath = path.join(cacheDir, `${id}.gif`);
-
-    // Return cached version if it exists
-    try {
-      await fs.access(cachedPath);
-      return cachedPath;
-    } catch {
-      // Cache miss, generate resized version
-    }
-
-    try {
-      await this.ensureDirectory(cacheDir);
-
-      // Resize GIF (sharp handles animated GIFs)
-      await sharp(originalPath, { animated: true })
-        .resize(width, height, { fit: "inside" })
-        .toFile(cachedPath);
-
-      console.log(`✅ Resized GIF created: ${cachedPath}`);
-      return cachedPath;
-    } catch (error) {
-      console.error(`Failed to resize GIF ${id}:`, error);
-      return originalPath; // Fallback to original
-    }
-  }
-
-  /**
-   * Delete a GIF
+   * Delete a GIF (from Supabase S3 and database)
    */
   async deleteGif(id: string): Promise<boolean> {
+    const connection = await this.pool.getConnection();
     try {
-      const connection = await this.pool.getConnection();
-      try {
-        // Get file path from database
-        const [rows] = await connection.query(
-          `SELECT file_path FROM gifs WHERE id = ?`,
-          [id]
-        );
+      const [rows] = await connection.query(`SELECT file_path FROM gifs WHERE id = ?`, [id]);
+      if (!rows || (Array.isArray(rows) && rows.length === 0)) {
+        throw new Error(`GIF not found: ${id}`);
+      }
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      const fileUrl: string = (row as any).file_path;
 
-        if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-          throw new Error(`GIF not found: ${id}`);
-        }
-
-        const row = Array.isArray(rows) ? rows[0] : rows;
-        const { file_path } = row as any;
-
-        // Delete file
+      // Derive the S3 key from the stored public URL
+      const publicPrefix = `${this.publicUrlBase}/storage/v1/object/public/${this.bucket}/`;
+      if (fileUrl.startsWith(publicPrefix)) {
+        const key = fileUrl.slice(publicPrefix.length);
         try {
-          await fs.unlink(file_path);
-          console.log(`✅ GIF file deleted: ${file_path}`);
-        } catch (error) {
-          console.warn(`Failed to delete GIF file: ${error}`);
-          // Continue with database deletion even if file deletion fails
-        }
-
-        // Delete from database
-        await connection.query(`DELETE FROM gifs WHERE id = ?`, [id]);
-
-        // Clean up resized versions
-        await this.cleanupResizedVersions(id);
-
-        console.log(`✅ GIF deleted from database: ${id}`);
-        return true;
-      } finally {
-        connection.release();
-      }
-    } catch (error) {
-      console.error("Failed to delete GIF:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clean up all resized versions of a GIF
-   */
-  private async cleanupResizedVersions(id: string): Promise<void> {
-    try {
-      const resizedRoot = this.resizeCachePath;
-      const entries = await fs.readdir(resizedRoot);
-
-      for (const sizeDir of entries) {
-        const sizeRootPath = path.join(resizedRoot, sizeDir);
-        const stat = await fs.stat(sizeRootPath);
-
-        if (stat.isDirectory()) {
-          const cachedFile = path.join(sizeRootPath, `${id}.gif`);
-          try {
-            await fs.unlink(cachedFile);
-            console.log(`✅ Cleaned up resized version: ${cachedFile}`);
-          } catch {
-            // File doesn't exist, continue
-          }
+          await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+          console.log(`✅ Deleted from Supabase S3: ${key}`);
+        } catch (err) {
+          console.warn(`Failed to delete S3 object: ${err}`);
         }
       }
-    } catch (error) {
-      console.warn(`Failed to cleanup resized versions for ${id}:`, error);
+
+      await connection.query(`DELETE FROM gifs WHERE id = ?`, [id]);
+      console.log(`✅ GIF deleted from database: ${id}`);
+      return true;
+    } finally {
+      connection.release();
     }
   }
 

@@ -108,19 +108,18 @@ function createUploadRoutes(options) {
      * GET /upload/gif/random
      * Get a random GIF from a category (defaults to 'welcome')
      *
-     * Query params: category?, width?, height?
-     * Returns: file path to random GIF
+     * Query params: category?
+     * Returns: redirect to the Supabase Storage URL
      */
     router.get("/gif/random", async (req, res) => {
         try {
             const category = req.query.category || "welcome";
-            const width = req.query.width ? parseInt(req.query.width) : undefined;
-            const height = req.query.height ? parseInt(req.query.height) : undefined;
-            const gifData = await gifManager.getRandomGif(category, width, height);
-            if (!gifData.path) {
+            const gifData = await gifManager.getRandomGif(category);
+            if (!gifData.url) {
                 return res.status(404).json({ error: `No GIFs found in category: ${category}` });
             }
-            return res.sendFile(gifData.path);
+            // Redirect to the cloud-hosted URL
+            return res.redirect(302, gifData.sourceUrl ?? gifData.url);
         }
         catch (error) {
             console.error("Get random GIF error:", error);

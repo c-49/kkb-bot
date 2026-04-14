@@ -8,7 +8,10 @@ const crypto_1 = require("crypto");
 const client_s3_1 = require("@aws-sdk/client-s3");
 // @ts-ignore - mysql2 types not yet installed
 const promise_1 = __importDefault(require("mysql2/promise"));
+// @ts-ignore - sharp types not yet installed
+const sharp_1 = __importDefault(require("sharp"));
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 /**
  * GIF Manager
  * Handles GIF storage via Supabase S3-compatible storage and database persistence
@@ -39,6 +42,18 @@ class GifManager {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "maxWidth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "maxHeight", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         Object.defineProperty(this, "MAX_GIFS_PER_CATEGORY", {
             enumerable: true,
             configurable: true,
@@ -50,6 +65,16 @@ class GifManager {
         const secretAccessKey = process.env.SUPABASE_S3_SECRET_ACCESS_KEY;
         this.bucket = process.env.SUPABASE_S3_BUCKET ?? "gifs";
         this.publicUrlBase = process.env.SUPABASE_PUBLIC_URL ?? "";
+        try {
+            const configPath = path_1.default.resolve(process.cwd(), "config.json");
+            const config = JSON.parse(fs_1.default.readFileSync(configPath, "utf8"));
+            this.maxWidth = config?.gif?.width ?? 256;
+            this.maxHeight = config?.gif?.height ?? 256;
+        }
+        catch {
+            this.maxWidth = 256;
+            this.maxHeight = 256;
+        }
         if (!endpoint || !accessKeyId || !secretAccessKey || !this.publicUrlBase) {
             throw new Error("Missing required Supabase S3 env vars: SUPABASE_S3_ENDPOINT, SUPABASE_S3_ACCESS_KEY_ID, SUPABASE_S3_SECRET_ACCESS_KEY, SUPABASE_PUBLIC_URL");
         }
@@ -67,6 +92,7 @@ class GifManager {
         });
         console.log(`☁️  Supabase S3 bucket: ${this.bucket}`);
         console.log(`🌐 Public URL base: ${this.publicUrlBase}`);
+        console.log(`🖼️  Max GIF dimensions: ${this.maxWidth}×${this.maxHeight}`);
     }
     /**
      * Build the public URL for an object key
@@ -237,6 +263,20 @@ class GifManager {
             if (gifCount >= this.MAX_GIFS_PER_CATEGORY) {
                 throw new Error(`Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`);
             }
+            // Resize before uploading — shrinks to fit within maxWidth×maxHeight,
+            // preserving aspect ratio. Never upscales. Keeps GIFs animated.
+            let uploadBuffer = fileBuffer;
+            try {
+                const isGif = ext === ".gif";
+                uploadBuffer = await (0, sharp_1.default)(fileBuffer, { animated: isGif })
+                    .resize(this.maxWidth, this.maxHeight, { fit: "inside", withoutEnlargement: true })
+                    .toBuffer();
+                console.log(`🖼️  Resized: ${fileBuffer.length} → ${uploadBuffer.length} bytes`);
+            }
+            catch (err) {
+                console.warn(`Could not resize ${fileName}, uploading original:`, err);
+                uploadBuffer = fileBuffer;
+            }
             // Upload to Supabase S3
             const id = (0, crypto_1.randomUUID)();
             const storedFileName = `${id}${ext}`;
@@ -247,16 +287,16 @@ class GifManager {
             await this.s3.send(new client_s3_1.PutObjectCommand({
                 Bucket: this.bucket,
                 Key: key,
-                Body: fileBuffer,
+                Body: uploadBuffer,
                 ContentType: contentType,
             }));
             const fileUrl = this.publicUrl(key);
             // Store metadata in database
             await connection.query(`INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, categoryData.id, fileName, fileUrl, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]);
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, categoryData.id, fileName, fileUrl, uploadBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]);
             console.log(`✅ GIF uploaded to Supabase "${category}": ${fileName}`);
             console.log(`   URL: ${fileUrl}`);
-            return { id, name: fileName, path: fileUrl, uploadedAt: Date.now(), size: fileBuffer.length };
+            return { id, name: fileName, path: fileUrl, uploadedAt: Date.now(), size: uploadBuffer.length };
         }
         finally {
             connection.release();

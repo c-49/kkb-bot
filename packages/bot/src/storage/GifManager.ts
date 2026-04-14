@@ -2,8 +2,11 @@ import { randomUUID } from "crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 // @ts-ignore - mysql2 types not yet installed
 import mysql from "mysql2/promise";
+// @ts-ignore - sharp types not yet installed
+import sharp from "sharp";
 import { ImageMeta } from "@kkb/shared";
 import path from "path";
+import fsSync from "fs";
 
 /**
  * GIF Manager
@@ -15,6 +18,8 @@ export class GifManager {
   private s3: S3Client;
   private bucket: string;
   private publicUrlBase: string;
+  private maxWidth: number;
+  private maxHeight: number;
   private readonly MAX_GIFS_PER_CATEGORY = 20;
 
   constructor() {
@@ -23,6 +28,15 @@ export class GifManager {
     const secretAccessKey = process.env.SUPABASE_S3_SECRET_ACCESS_KEY;
     this.bucket = process.env.SUPABASE_S3_BUCKET ?? "gifs";
     this.publicUrlBase = process.env.SUPABASE_PUBLIC_URL ?? "";
+    try {
+      const configPath = path.resolve(process.cwd(), "config.json");
+      const config = JSON.parse(fsSync.readFileSync(configPath, "utf8")) as { gif?: { width?: number; height?: number } };
+      this.maxWidth = config?.gif?.width ?? 256;
+      this.maxHeight = config?.gif?.height ?? 256;
+    } catch {
+      this.maxWidth = 256;
+      this.maxHeight = 256;
+    }
 
     if (!endpoint || !accessKeyId || !secretAccessKey || !this.publicUrlBase) {
       throw new Error(
@@ -46,6 +60,7 @@ export class GifManager {
 
     console.log(`☁️  Supabase S3 bucket: ${this.bucket}`);
     console.log(`🌐 Public URL base: ${this.publicUrlBase}`);
+    console.log(`🖼️  Max GIF dimensions: ${this.maxWidth}×${this.maxHeight}`);
   }
 
   /**
@@ -239,6 +254,20 @@ export class GifManager {
         throw new Error(`Category "${category}" has reached the maximum of ${this.MAX_GIFS_PER_CATEGORY} GIFs`);
       }
 
+      // Resize before uploading — shrinks to fit within maxWidth×maxHeight,
+      // preserving aspect ratio. Never upscales. Keeps GIFs animated.
+      let uploadBuffer = fileBuffer;
+      try {
+        const isGif = ext === ".gif";
+        uploadBuffer = await sharp(fileBuffer, { animated: isGif })
+          .resize(this.maxWidth, this.maxHeight, { fit: "inside", withoutEnlargement: true })
+          .toBuffer();
+        console.log(`🖼️  Resized: ${fileBuffer.length} → ${uploadBuffer.length} bytes`);
+      } catch (err) {
+        console.warn(`Could not resize ${fileName}, uploading original:`, err);
+        uploadBuffer = fileBuffer;
+      }
+
       // Upload to Supabase S3
       const id = randomUUID();
       const storedFileName = `${id}${ext}`;
@@ -251,7 +280,7 @@ export class GifManager {
       await this.s3.send(new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        Body: fileBuffer,
+        Body: uploadBuffer,
         ContentType: contentType,
       }));
 
@@ -261,12 +290,12 @@ export class GifManager {
       await connection.query(
         `INSERT INTO gifs (id, category_id, name, file_path, size, uploader_id, uploaded_at, source_url, description)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, categoryData.id, fileName, fileUrl, fileBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]
+        [id, categoryData.id, fileName, fileUrl, uploadBuffer.length, uploaderId || null, Date.now(), sourceUrl || null, "User uploaded GIF"]
       );
 
       console.log(`✅ GIF uploaded to Supabase "${category}": ${fileName}`);
       console.log(`   URL: ${fileUrl}`);
-      return { id, name: fileName, path: fileUrl, uploadedAt: Date.now(), size: fileBuffer.length };
+      return { id, name: fileName, path: fileUrl, uploadedAt: Date.now(), size: uploadBuffer.length };
     } finally {
       connection.release();
     }
